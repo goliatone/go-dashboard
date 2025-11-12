@@ -74,6 +74,92 @@ var defaultWidgetDefinitions = []WidgetDefinition{
 			},
 		},
 	},
+	{
+		Code:        "admin.widget.analytics_funnel",
+		Name:        "Conversion Funnel",
+		Description: "Tracks drop-off through key funnel stages.",
+		Category:    "analytics",
+		Schema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"range": map[string]any{
+					"type":    "string",
+					"enum":    []string{"7d", "14d", "30d", "90d", "180d"},
+					"default": "30d",
+				},
+				"segment": map[string]any{
+					"type":      "string",
+					"minLength": 1,
+				},
+				"goal": map[string]any{
+					"type":    "number",
+					"minimum": 0,
+					"maximum": 100,
+					"default": 45,
+				},
+			},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Code:        "admin.widget.cohort_overview",
+		Name:        "Cohort Overview",
+		Description: "Retention grid grouped by signup cohort.",
+		Category:    "analytics",
+		Schema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"interval": map[string]any{
+					"type":    "string",
+					"enum":    []string{"weekly", "monthly"},
+					"default": "weekly",
+				},
+				"periods": map[string]any{
+					"type":    "integer",
+					"minimum": 4,
+					"maximum": 12,
+					"default": 8,
+				},
+				"metric": map[string]any{
+					"type":    "string",
+					"enum":    []string{"active", "retained", "upgraded"},
+					"default": "retained",
+				},
+			},
+			"additionalProperties": false,
+		},
+	},
+	{
+		Code:        "admin.widget.alert_trends",
+		Name:        "Alert Trends",
+		Description: "Compares alert volume/severity over time.",
+		Category:    "analytics",
+		Schema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"lookback_days": map[string]any{
+					"type":    "integer",
+					"minimum": 7,
+					"maximum": 90,
+					"default": 30,
+				},
+				"severity": map[string]any{
+					"type":     "array",
+					"minItems": 1,
+					"items": map[string]any{
+						"type": "string",
+						"enum": []string{"info", "warning", "critical"},
+					},
+					"uniqueItems": true,
+					"default":     []string{"warning", "critical"},
+				},
+				"service": map[string]any{
+					"type": "string",
+				},
+			},
+			"additionalProperties": false,
+		},
+	},
 }
 
 var defaultSeedConfigs = []AddWidgetRequest{
