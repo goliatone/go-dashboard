@@ -17,6 +17,7 @@ type Executor interface {
 	Remove(ctx context.Context, input commands.RemoveWidgetInput) error
 	Reorder(ctx context.Context, input commands.ReorderWidgetsInput) error
 	Refresh(ctx context.Context, input commands.RefreshWidgetInput) error
+	Preferences(ctx context.Context, input commands.SaveLayoutPreferencesInput) error
 }
 
 // CommandExecutor wires go-command.Commander instances into the Executor contract.
@@ -25,6 +26,7 @@ type CommandExecutor struct {
 	RemoveCommander  gocommand.Commander[commands.RemoveWidgetInput]
 	ReorderCommander gocommand.Commander[commands.ReorderWidgetsInput]
 	RefreshCommander gocommand.Commander[commands.RefreshWidgetInput]
+	PrefsCommander   gocommand.Commander[commands.SaveLayoutPreferencesInput]
 }
 
 var _ Executor = (*CommandExecutor)(nil)
@@ -59,4 +61,12 @@ func (e *CommandExecutor) Refresh(ctx context.Context, input commands.RefreshWid
 		return errors.New("dashboard: refresh command not configured")
 	}
 	return e.RefreshCommander.Execute(ctx, input)
+}
+
+// Preferences saves layout overrides for the viewer.
+func (e *CommandExecutor) Preferences(ctx context.Context, input commands.SaveLayoutPreferencesInput) error {
+	if e == nil || e.PrefsCommander == nil {
+		return errors.New("dashboard: preferences command not configured")
+	}
+	return e.PrefsCommander.Execute(ctx, input)
 }
