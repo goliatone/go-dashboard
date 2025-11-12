@@ -12,7 +12,8 @@ type RemoveWidgetInput struct {
 	WidgetID string
 }
 
-// RemoveWidgetCommand wraps Service.RemoveWidget.
+// RemoveWidgetCommand removes widget instances through the service and records
+// telemetry for auditing purposes.
 type removeService interface {
 	RemoveWidget(ctx context.Context, widgetID string) error
 }

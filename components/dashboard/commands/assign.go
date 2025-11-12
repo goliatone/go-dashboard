@@ -8,12 +8,14 @@ import (
 	dashboard "github.com/goliatone/go-dashboard/components/dashboard"
 )
 
-// AssignWidgetCommand wraps Service.AddWidget.
+// AssignWidgetCommand wraps Service.AddWidget so transports can invoke widget
+// assignments without linking directly against the service.
 type assignService interface {
 	AddWidget(ctx context.Context, req dashboard.AddWidgetRequest) error
 }
 
-// AssignWidgetCommand wraps Service.AddWidget.
+// AssignWidgetCommand translates incoming requests into service calls and emits
+// telemetry so operators can observe widget assignment activity.
 type AssignWidgetCommand struct {
 	service   assignService
 	telemetry Telemetry

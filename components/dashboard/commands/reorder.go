@@ -13,7 +13,8 @@ type ReorderWidgetsInput struct {
 	WidgetIDs []string
 }
 
-// ReorderWidgetsCommand wraps Service.ReorderWidgets.
+// ReorderWidgetsCommand wraps Service.ReorderWidgets so transports only have to
+// worry about parsing JSON payloads before invoking the shared logic.
 type reorderService interface {
 	ReorderWidgets(ctx context.Context, areaCode string, widgetIDs []string) error
 }
