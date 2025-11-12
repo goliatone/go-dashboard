@@ -26,6 +26,7 @@ type Options struct {
 	Authorizer      Authorizer
 	PreferenceStore PreferenceStore
 	Providers       ProviderRegistry
+	ConfigValidator ConfigValidator
 	RefreshHook     RefreshHook
 	Telemetry       Telemetry
 	Areas           []string
@@ -46,6 +47,9 @@ func NewService(opts Options) *Service {
 	}
 	if opts.Providers == nil {
 		opts.Providers = NewRegistry()
+	}
+	if opts.ConfigValidator == nil {
+		opts.ConfigValidator = NewJSONSchemaValidator()
 	}
 	opts.Telemetry = normalizeTelemetry(opts.Telemetry)
 	if opts.PreferenceStore == nil {
@@ -77,6 +81,9 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 	}
 	if req.DefinitionID == "" {
 		return errInvalidDefinition
+	}
+	if err := s.validateConfiguration(req.DefinitionID, req.Configuration); err != nil {
+		return err
 	}
 	instance, err := store.CreateInstance(ctx, CreateWidgetInstanceInput{
 		DefinitionID:  req.DefinitionID,
@@ -193,7 +200,8 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 			resolved.Widgets[i].AreaCode = area
 		}
 		filtered := s.filterAuthorized(ctx, viewer, resolved.Widgets)
-		layout.Areas[area] = applyOrderOverride(filtered, overrides.AreaOrder[area])
+		ordered := applyOrderOverride(filtered, overrides.AreaOrder[area])
+		layout.Areas[area] = applyHiddenFilter(ordered, overrides.HiddenWidgets)
 	}
 	s.recordTelemetry(ctx, "dashboard.layout.resolve", map[string]any{
 		"viewer": viewer.UserID,
@@ -228,6 +236,17 @@ func (s *Service) widgetStore() (WidgetStore, error) {
 		return nil, errMissingWidgetStore
 	}
 	return s.opts.WidgetStore, nil
+}
+
+func (s *Service) validateConfiguration(definitionID string, config map[string]any) error {
+	if s.opts.ConfigValidator == nil || s.opts.Providers == nil {
+		return nil
+	}
+	def, ok := s.opts.Providers.Definition(definitionID)
+	if !ok {
+		return nil
+	}
+	return s.opts.ConfigValidator.Validate(def, config)
 }
 
 func (s *Service) areaList() []string {
@@ -291,6 +310,24 @@ func (s *Service) NotifyWidgetUpdated(ctx context.Context, event WidgetEvent) er
 		"reason":    event.Reason,
 	})
 	return nil
+}
+
+// SavePreferences persists per-viewer layout overrides.
+func (s *Service) SavePreferences(ctx context.Context, viewer ViewerContext, overrides LayoutOverrides) error {
+	if viewer.UserID == "" {
+		return errors.New("dashboard: viewer context missing user id")
+	}
+	s.normalizeOverrides(&overrides)
+	return s.opts.PreferenceStore.SaveLayoutOverrides(ctx, viewer, overrides)
+}
+
+func (s *Service) normalizeOverrides(overrides *LayoutOverrides) {
+	if overrides.AreaOrder == nil {
+		overrides.AreaOrder = map[string][]string{}
+	}
+	if overrides.HiddenWidgets == nil {
+		overrides.HiddenWidgets = map[string]bool{}
+	}
 }
 
 type allowAllAuthorizer struct{}
