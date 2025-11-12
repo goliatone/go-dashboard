@@ -120,6 +120,37 @@ func TestAddWidgetEmitsRefreshHook(t *testing.T) {
 	}
 }
 
+func TestAddWidgetValidatesConfiguration(t *testing.T) {
+	store := &fakeWidgetStore{}
+	service := NewService(Options{
+		WidgetStore: store,
+	})
+	err := service.AddWidget(context.Background(), AddWidgetRequest{
+		DefinitionID: "admin.widget.user_stats",
+		AreaCode:     "admin.dashboard.main",
+		Configuration: map[string]any{
+			"metric": "total",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected valid configuration, got %v", err)
+	}
+	if store.createCalls != 1 {
+		t.Fatalf("expected widget creation after validation, got %d", store.createCalls)
+	}
+	err = service.AddWidget(context.Background(), AddWidgetRequest{
+		DefinitionID:  "admin.widget.user_stats",
+		AreaCode:      "admin.dashboard.main",
+		Configuration: map[string]any{},
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for missing metric")
+	}
+	if store.createCalls != 1 {
+		t.Fatalf("expected store not invoked for invalid payload, got %d", store.createCalls)
+	}
+}
+
 type fakeWidgetStore struct {
 	ensureAreaFn      func(def WidgetAreaDefinition) error
 	ensureDefinition  func(def WidgetDefinition) error
@@ -131,6 +162,7 @@ type fakeWidgetStore struct {
 	assignCalls       []AssignWidgetInput
 	reorderCalls      []ReorderAreaInput
 	createdDefinition []string
+	createCalls       int
 }
 
 func (f *fakeWidgetStore) EnsureArea(ctx context.Context, def WidgetAreaDefinition) (bool, error) {
@@ -149,6 +181,7 @@ func (f *fakeWidgetStore) EnsureDefinition(ctx context.Context, def WidgetDefini
 }
 
 func (f *fakeWidgetStore) CreateInstance(ctx context.Context, input CreateWidgetInstanceInput) (WidgetInstance, error) {
+	f.createCalls++
 	if f.createInstanceFn != nil {
 		return f.createInstanceFn(input)
 	}

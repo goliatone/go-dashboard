@@ -90,6 +90,14 @@ func TestAlertProviderShapesSeries(t *testing.T) {
 	if len(series) != 1 || series[0]["day"] != "2024-11-10" {
 		t.Fatalf("unexpected series payload: %#v", data["series"])
 	}
+	counts, _ := series[0]["counts"].([]map[string]any)
+	if len(counts) != 1 || counts[0]["severity"] != "critical" || counts[0]["count"].(int) != 3 {
+		t.Fatalf("unexpected severity rows: %#v", counts)
+	}
+	severities, _ := data["severities"].([]map[string]any)
+	if len(severities) != 1 || severities[0]["count"].(int) != 5 {
+		t.Fatalf("unexpected totals payload: %#v", severities)
+	}
 	if repo.query.Service != "api" || repo.query.LookbackDays != 10 || !reflect.DeepEqual(repo.query.Severities, []string{"critical"}) {
 		t.Fatalf("unexpected alert query %#v", repo.query)
 	}
