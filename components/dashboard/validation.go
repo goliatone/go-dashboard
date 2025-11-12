@@ -40,7 +40,7 @@ func (v *JSONSchemaValidator) Validate(def WidgetDefinition, config map[string]a
 	if payload == nil {
 		payload = map[string]any{}
 	}
-	if err := schema.ValidateInterface(payload); err != nil {
+	if err := schema.Validate(payload); err != nil {
 		return fmt.Errorf("dashboard: configuration for %s failed validation: %w", def.Code, err)
 	}
 	return nil
