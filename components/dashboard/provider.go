@@ -2,7 +2,9 @@ package dashboard
 
 import "context"
 
-// Provider fetches data required to render a widget instance.
+// Provider fetches the data required to render a widget instance. Providers can
+// call any downstream dependency (databases, APIs, services) as long as they
+// respect the viewer context that is supplied in the WidgetContext payload.
 type Provider interface {
 	Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error)
 }
@@ -15,7 +17,7 @@ func (fn ProviderFunc) Fetch(ctx context.Context, meta WidgetContext) (WidgetDat
 	return fn(ctx, meta)
 }
 
-// WidgetContext contains the metadata needed by providers.
+// WidgetContext contains the metadata needed by providers to calculate widget data.
 type WidgetContext struct {
 	Instance WidgetInstance
 	Viewer   ViewerContext
