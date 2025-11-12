@@ -9,6 +9,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	router "github.com/goliatone/go-router"
@@ -17,6 +18,7 @@ import (
 	"github.com/goliatone/go-dashboard/components/dashboard/commands"
 	"github.com/goliatone/go-dashboard/components/dashboard/gorouter"
 	"github.com/goliatone/go-dashboard/components/dashboard/httpapi"
+	"github.com/goliatone/go-dashboard/pkg/analytics"
 	dashboardpkg "github.com/goliatone/go-dashboard/pkg/dashboard"
 	"github.com/goliatone/go-dashboard/pkg/goadmin"
 )
@@ -77,6 +79,10 @@ func main() {
 		},
 	}); err != nil {
 		log.Fatalf("add analytics widget: %v", err)
+	}
+
+	if err := registerAnalyticsProviders(registry); err != nil {
+		log.Fatalf("register analytics providers: %v", err)
 	}
 
 	renderer := newSampleRenderer()
@@ -260,6 +266,50 @@ func newSampleRenderer() sampleRenderer {
 		"add":         func(a, b int) int { return a + b },
 	}).Parse(dashboardTemplate))
 	return sampleRenderer{tmpl: tmpl}
+}
+
+func registerAnalyticsProviders(reg *dashboard.Registry) error {
+	mock := analytics.NewMockClient(analytics.MockData{
+		Funnel: dashboard.FunnelReport{
+			Range:          "30d",
+			Segment:        "enterprise",
+			ConversionRate: 4.8,
+			Goal:           52,
+			Steps: []dashboard.FunnelStep{
+				{Label: "Visitors", Value: 18500, Position: 0},
+				{Label: "Signed Up", Value: 7200, Position: 1},
+				{Label: "Activated", Value: 3100, Position: 2},
+				{Label: "Paying", Value: 980, Position: 3},
+			},
+		},
+		Cohort: dashboard.CohortReport{
+			Interval: "weekly",
+			Metric:   "retained",
+			Rows: []dashboard.CohortRow{
+				{Label: "Week 1", Size: 740, Retention: []float64{100, 82, 74, 66}},
+				{Label: "Week 2", Size: 705, Retention: []float64{100, 79, 70, 64}},
+			},
+		},
+		Alerts: dashboard.AlertTrendsReport{
+			Service: "goadmin",
+			Totals:  map[string]int{"critical": 12, "warning": 27},
+			Series: []dashboard.AlertSeries{
+				{Day: time.Now().UTC().AddDate(0, 0, -1), Counts: map[string]int{"critical": 2, "warning": 5}},
+				{Day: time.Now().UTC(), Counts: map[string]int{"critical": 10, "warning": 22}},
+			},
+		},
+	})
+
+	if err := reg.RegisterProvider("admin.widget.analytics_funnel", dashboard.NewFunnelAnalyticsProvider(analytics.NewFunnelRepository(mock))); err != nil {
+		return err
+	}
+	if err := reg.RegisterProvider("admin.widget.cohort_overview", dashboard.NewCohortAnalyticsProvider(analytics.NewCohortRepository(mock))); err != nil {
+		return err
+	}
+	if err := reg.RegisterProvider("admin.widget.alert_trends", dashboard.NewAlertTrendsProvider(analytics.NewAlertRepository(mock))); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
