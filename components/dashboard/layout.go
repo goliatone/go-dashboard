@@ -23,3 +23,17 @@ func applyOrderOverride(widgets []WidgetInstance, order []string) []WidgetInstan
 	}
 	return result
 }
+
+func applyHiddenFilter(widgets []WidgetInstance, hidden map[string]bool) []WidgetInstance {
+	if len(widgets) == 0 || len(hidden) == 0 {
+		return widgets
+	}
+	filtered := widgets[:0]
+	for _, w := range widgets {
+		if hidden[w.ID] {
+			continue
+		}
+		filtered = append(filtered, w)
+	}
+	return filtered
+}
