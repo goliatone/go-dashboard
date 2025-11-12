@@ -111,7 +111,8 @@ type ResolvedArea struct {
 
 // LayoutOverrides captures per-user adjustments.
 type LayoutOverrides struct {
-	AreaOrder map[string][]string
+	AreaOrder     map[string][]string
+	HiddenWidgets map[string]bool
 }
 
 // ViewerContext captures the active user/locale information needed to render dashboards.
