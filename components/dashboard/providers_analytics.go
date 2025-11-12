@@ -103,13 +103,22 @@ func (p *funnelProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetD
 	if err != nil {
 		return nil, err
 	}
+	baseline := 1.0
+	if len(report.Steps) > 0 && report.Steps[0].Value > 0 {
+		baseline = report.Steps[0].Value
+	}
 	steps := make([]map[string]any, 0, len(report.Steps))
 	for _, step := range report.Steps {
+		percentage := 0.0
+		if baseline > 0 {
+			percentage = (step.Value / baseline) * 100
+		}
 		steps = append(steps, map[string]any{
 			"label":    step.Label,
 			"value":    step.Value,
 			"dropoff":  step.DropOff,
 			"position": step.Position,
+			"percent":  percentage,
 		})
 	}
 	return WidgetData{
@@ -172,19 +181,19 @@ func (p *alertProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetDa
 	if err != nil {
 		return nil, err
 	}
+	order := normalizeSeverities(query.Severities)
 	series := make([]map[string]any, 0, len(report.Series))
 	for _, bucket := range report.Series {
 		series = append(series, map[string]any{
 			"day":    bucket.Day.Format("2006-01-02"),
-			"counts": bucket.Counts,
+			"counts": countsForOrder(order, bucket.Counts),
 		})
 	}
 	return WidgetData{
 		"lookback_days": query.LookbackDays,
-		"severities":    query.Severities,
+		"severities":    countsForOrder(order, report.Totals),
 		"service":       report.Service,
 		"series":        series,
-		"totals":        report.Totals,
 	}, nil
 }
 
@@ -206,7 +215,7 @@ func extractCohortQuery(config map[string]any) CohortQuery {
 }
 
 func extractAlertQuery(config map[string]any) AlertTrendQuery {
-	severities := sliceOr(config["severity"], []string{"warning", "critical"})
+	severities := normalizeSeverities(sliceOr(config["severity"], []string{"warning", "critical"}))
 	return AlertTrendQuery{
 		LookbackDays: intOr(config["lookback_days"], 30),
 		Severities:   severities,
@@ -266,6 +275,41 @@ func sliceOr(value any, fallback []string) []string {
 		return fallback
 	}
 	return result
+}
+
+func normalizeSeverities(values []string) []string {
+	if len(values) == 0 {
+		return []string{"warning", "critical"}
+	}
+	order := []string{}
+	seen := map[string]bool{}
+	preferred := []string{"critical", "warning", "info"}
+	for _, candidate := range preferred {
+		for _, v := range values {
+			if v == candidate && !seen[v] {
+				order = append(order, v)
+				seen[v] = true
+			}
+		}
+	}
+	for _, v := range values {
+		if !seen[v] {
+			order = append(order, v)
+			seen[v] = true
+		}
+	}
+	return order
+}
+
+func countsForOrder(order []string, counts map[string]int) []map[string]any {
+	rows := make([]map[string]any, 0, len(order))
+	for _, severity := range order {
+		rows = append(rows, map[string]any{
+			"severity": severity,
+			"count":    counts[severity],
+		})
+	}
+	return rows
 }
 
 // DemoFunnelRepository returns static funnel data for demos/tests.
