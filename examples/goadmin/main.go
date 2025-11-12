@@ -65,6 +65,19 @@ func main() {
 	}); err != nil {
 		log.Fatalf("add welcome widget: %v", err)
 	}
+	funnelPos := 0
+	if err := service.AddWidget(ctx, dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.analytics_funnel",
+		AreaCode:     "admin.dashboard.main",
+		Position:     &funnelPos,
+		Configuration: map[string]any{
+			"range":   "30d",
+			"segment": "enterprise",
+			"goal":    52,
+		},
+	}); err != nil {
+		log.Fatalf("add analytics widget: %v", err)
+	}
 
 	renderer := newSampleRenderer()
 	controller := dashboard.NewController(dashboard.ControllerOptions{
@@ -77,6 +90,7 @@ func main() {
 		RemoveCommander:  commands.NewRemoveWidgetCommand(service, nil),
 		ReorderCommander: commands.NewReorderWidgetsCommand(service, nil),
 		RefreshCommander: commands.NewRefreshWidgetCommand(service, nil),
+		PrefsCommander:   commands.NewSaveLayoutPreferencesCommand(service, nil),
 	}
 
 	hook := dashboard.NewBroadcastHook()
@@ -243,6 +257,7 @@ func newSampleRenderer() sampleRenderer {
 	tmpl := template.Must(template.New("dashboard").Funcs(template.FuncMap{
 		"isType":      func(definition, code string) bool { return definition == code },
 		"widgetTitle": widgetTitle,
+		"add":         func(a, b int) int { return a + b },
 	}).Parse(dashboardTemplate))
 	return sampleRenderer{tmpl: tmpl}
 }
@@ -286,33 +301,67 @@ func toDashboardView(data any) dashboardView {
 		Description: stringOrDefault(raw["description"], ""),
 	}
 	if areas, ok := raw["areas"].(map[string]any); ok {
-		for _, key := range []string{"main", "sidebar", "footer"} {
+		order := []string{
+			"admin.dashboard.main",
+			"admin.dashboard.sidebar",
+			"admin.dashboard.footer",
+		}
+		handled := map[string]bool{}
+		for _, key := range order {
 			if areaRaw, ok := areas[key].(map[string]any); ok {
-				area := areaView{Code: stringOrDefault(areaRaw["code"], key)}
-				if widgetsRaw, ok := areaRaw["widgets"].([]any); ok {
-					for _, wr := range widgetsRaw {
-						if widgetMap, ok := wr.(map[string]any); ok {
-							widget := widgetView{
-								ID:         stringOrDefault(widgetMap["id"], ""),
-								Definition: extractDefinition(widgetMap),
-							}
-							if cfg, ok := widgetMap["config"].(map[string]any); ok {
-								widget.Config = cfg
-							}
-							if dataMap, ok := widgetMap["data"].(map[string]any); ok {
-								widget.Data = dataMap
-							} else if widgetMap["data"] != nil {
-								widget.Data = map[string]any{"value": widgetMap["data"]}
-							}
-							area.Widgets = append(area.Widgets, widget)
-						}
-					}
-				}
-				view.Areas = append(view.Areas, area)
+				view.Areas = append(view.Areas, buildAreaView(areaRaw, key))
+				handled[key] = true
+			}
+		}
+		for code, areaRaw := range areas {
+			if handled[code] {
+				continue
+			}
+			if typed, ok := areaRaw.(map[string]any); ok {
+				view.Areas = append(view.Areas, buildAreaView(typed, code))
 			}
 		}
 	}
 	return view
+}
+
+func buildAreaView(areaRaw map[string]any, fallback string) areaView {
+	area := areaView{Code: stringOrDefault(areaRaw["code"], fallback)}
+	for _, widgetMap := range toWidgetMaps(areaRaw["widgets"]) {
+		widget := widgetView{
+			ID:         stringOrDefault(widgetMap["id"], ""),
+			Definition: extractDefinition(widgetMap),
+		}
+		if cfg, ok := widgetMap["config"].(map[string]any); ok {
+			widget.Config = cfg
+		}
+		if dataMap, ok := widgetMap["data"].(map[string]any); ok {
+			widget.Data = dataMap
+		} else if widgetMap["data"] != nil {
+			widget.Data = map[string]any{"value": widgetMap["data"]}
+		}
+		area.Widgets = append(area.Widgets, widget)
+	}
+	return area
+}
+
+func toWidgetMaps(raw any) []map[string]any {
+	if raw == nil {
+		return nil
+	}
+	if list, ok := raw.([]map[string]any); ok {
+		return list
+	}
+	if list, ok := raw.([]any); ok {
+		out := make([]map[string]any, 0, len(list))
+		for _, item := range list {
+			if widgetMap, ok := item.(map[string]any); ok {
+				out = append(out, widgetMap)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func stringOrDefault(value any, fallback string) string {
@@ -344,6 +393,12 @@ func widgetTitle(def string) string {
 		return "Quick Actions"
 	case "admin.widget.system_status":
 		return "System Status"
+	case "admin.widget.analytics_funnel":
+		return "Conversion Funnel"
+	case "admin.widget.cohort_overview":
+		return "Cohort Overview"
+	case "admin.widget.alert_trends":
+		return "Alert Trends"
 	case "demo.widget.welcome":
 		return "Welcome"
 	default:
@@ -364,7 +419,9 @@ const dashboardTemplate = `<!DOCTYPE html>
       .area-footer { grid-column: 1 / -1; }
       section.area { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(31,41,55,0.12); padding: 1.5rem; }
       section.area h2 { margin-top: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
-      .widget { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; margin-top: 1rem; background: #fafafa; }
+      .widget { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; margin-top: 1rem; background: #fafafa; cursor: grab; }
+      .widget.dragging { opacity: 0.5; }
+      .widget.is-hidden { opacity: 0.35; }
       .widget h3 { margin: 0 0 0.5rem; }
       .metrics { display: flex; gap: 1rem; }
       .metric { flex: 1; background: white; border-radius: 8px; padding: 0.75rem; text-align: center; }
@@ -375,6 +432,9 @@ const dashboardTemplate = `<!DOCTYPE html>
       .actions a { text-decoration: none; background: #2563eb; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; }
       .status { list-style: none; padding: 0; margin: 0; }
       .status li { display: flex; justify-content: space-between; padding: 0.35rem 0; }
+      .widget__toolbar { display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 0.5rem; }
+      .widget__toolbar button { border: none; background: #e5e7eb; border-radius: 4px; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+      #save-status { margin: 1rem 2rem 0; color: #2563eb; font-size: 0.9rem; }
     </style>
   </head>
   <body>
@@ -382,32 +442,121 @@ const dashboardTemplate = `<!DOCTYPE html>
       <h1>{{ .Title }}</h1>
       {{ if .Description }}<p>{{ .Description }}</p>{{ end }}
     </header>
-    <div class="dashboard">
+    <p id="save-status">Drag widgets between areas or hit "Toggle Hide" to personalize this dashboard. Changes autosave.</p>
+    <div class="dashboard" id="dashboard">
       {{ range $idx, $area := .Areas }}
         {{ if eq $area.Code "admin.dashboard.main" }}
-          <section class="area area-main">
+          <section class="area area-main" data-area="{{ $area.Code }}">
             <h2>Main</h2>
             {{ template "widgets" $area.Widgets }}
           </section>
         {{ else if eq $area.Code "admin.dashboard.sidebar" }}
-          <section class="area area-sidebar">
+          <section class="area area-sidebar" data-area="{{ $area.Code }}">
             <h2>Sidebar</h2>
             {{ template "widgets" $area.Widgets }}
           </section>
         {{ else if eq $area.Code "admin.dashboard.footer" }}
-          <section class="area area-footer">
+          <section class="area area-footer" data-area="{{ $area.Code }}">
             <h2>Footer</h2>
             {{ template "widgets" $area.Widgets }}
           </section>
         {{ end }}
       {{ end }}
     </div>
+    <script>
+      (function () {
+        const areas = document.querySelectorAll("[data-area]");
+        const status = document.getElementById("save-status");
+        let dragged = null;
+
+        document.querySelectorAll(".widget").forEach(widget => {
+          widget.draggable = true;
+          widget.addEventListener("dragstart", () => {
+            dragged = widget;
+            widget.classList.add("dragging");
+          });
+          widget.addEventListener("dragend", () => {
+            widget.classList.remove("dragging");
+          });
+        });
+
+        areas.forEach(area => {
+          area.addEventListener("dragover", event => {
+            event.preventDefault();
+            const after = getDragAfterElement(area, event.clientY);
+            if (!dragged) return;
+            if (after == null) {
+              area.appendChild(dragged);
+            } else if (after !== dragged) {
+              area.insertBefore(dragged, after);
+            }
+          });
+          area.addEventListener("drop", event => {
+            event.preventDefault();
+            saveLayout();
+          });
+        });
+
+        document.querySelectorAll(".hide-widget").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const widget = btn.closest(".widget");
+            widget.classList.toggle("is-hidden");
+            saveLayout();
+          });
+        });
+
+        function getDragAfterElement(container, y) {
+          const elements = [...container.querySelectorAll(".widget:not(.dragging)")];
+          return elements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+              return { offset: offset, element: child };
+            } else {
+              return closest;
+            }
+          }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
+        let saveTimer;
+        function saveLayout() {
+          const payload = { area_order: {}, hidden_widget_ids: [] };
+          document.querySelectorAll("[data-area]").forEach(area => {
+            const code = area.getAttribute("data-area");
+            payload.area_order[code] = Array.from(area.querySelectorAll(".widget:not(.is-hidden)")).map(w => w.getAttribute("data-widget"));
+          });
+          document.querySelectorAll(".widget.is-hidden").forEach(widget => {
+            payload.hidden_widget_ids.push(widget.getAttribute("data-widget"));
+          });
+
+          clearTimeout(saveTimer);
+          status.textContent = "Saving layout…";
+          saveTimer = setTimeout(() => {
+            fetch("/admin/dashboard/preferences", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            })
+              .then(res => {
+                if (!res.ok) throw new Error("Failed request");
+                status.textContent = "Layout saved";
+              })
+              .catch(() => {
+                status.textContent = "Save failed. Check console.";
+              });
+          }, 200);
+        }
+      })();
+    </script>
   </body>
 </html>
 
 {{ define "widgets" }}
   {{ range . }}
-    <article class="widget">
+    <article class="widget" data-widget="{{ .ID }}">
+      <div class="widget__toolbar">
+        <button type="button" class="hide-widget">Toggle Hide</button>
+      </div>
       <h3>{{ widgetTitle .Definition }}</h3>
       {{ if isType .Definition "admin.widget.user_stats" }}
         <div class="metrics">
@@ -436,6 +585,40 @@ const dashboardTemplate = `<!DOCTYPE html>
             <li>
               <span>{{ index $check "name" }}</span>
               <strong>{{ index $check "status" }}</strong>
+            </li>
+          {{ end }}
+        </ul>
+      {{ else if isType .Definition "admin.widget.analytics_funnel" }}
+        <p><strong>{{ index .Data "conversion_rate" }}%</strong> conversion (goal {{ index .Data "goal" }}%)</p>
+        <ul class="activity">
+          {{ range $step := index .Data "steps" }}
+            <li>
+              <strong>{{ index $step "label" }}</strong>
+              {{ index $step "value" }} · {{ printf "%.1f%%" (index $step "percent") }} of top
+            </li>
+          {{ end }}
+        </ul>
+      {{ else if isType .Definition "admin.widget.cohort_overview" }}
+        <ul class="activity">
+          {{ range $row := index .Data "rows" }}
+            <li>
+              <strong>{{ index $row "label" }}</strong> — {{ index $row "size" }} signups
+              <div>
+                {{ range $idx, $rate := index $row "retention" }}
+                  <span style="margin-right:0.75rem;">P{{ add $idx 1 }} {{ printf "%.0f%%" $rate }}</span>
+                {{ end }}
+              </div>
+            </li>
+          {{ end }}
+        </ul>
+      {{ else if isType .Definition "admin.widget.alert_trends" }}
+        <ul class="activity">
+          {{ range $bucket := index .Data "series" }}
+            <li>
+              <strong>{{ index $bucket "day" }}</strong>
+              {{ range $row := index $bucket "counts" }}
+                <span style="margin-left:0.5rem;">{{ index $row "severity" }}: {{ index $row "count" }}</span>
+              {{ end }}
             </li>
           {{ end }}
         </ul>
