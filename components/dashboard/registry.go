@@ -31,13 +31,15 @@ type Registry struct {
 	mu          sync.RWMutex
 	definitions map[string]WidgetDefinition
 	providers   map[string]Provider
+	manifestMeta map[string]ManifestProvider
 }
 
 // NewRegistry builds an empty registry and applies global hooks.
 func NewRegistry() *Registry {
 	reg := &Registry{
-		definitions: map[string]WidgetDefinition{},
-		providers:   map[string]Provider{},
+		definitions:  map[string]WidgetDefinition{},
+		providers:    map[string]Provider{},
+		manifestMeta: map[string]ManifestProvider{},
 	}
 	reg.registerDefaults()
 	_ = reg.ApplyHooks()
@@ -124,6 +126,14 @@ func (r *Registry) Provider(code string) (Provider, bool) {
 	return provider, ok
 }
 
+// ProviderMetadata returns any manifest metadata registered for a widget.
+func (r *Registry) ProviderMetadata(code string) (ManifestProvider, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	meta, ok := r.manifestMeta[code]
+	return meta, ok
+}
+
 // Definitions returns all registered definitions.
 func (r *Registry) Definitions() []WidgetDefinition {
 	r.mu.RLock()
@@ -133,4 +143,13 @@ func (r *Registry) Definitions() []WidgetDefinition {
 		defs = append(defs, def)
 	}
 	return defs
+}
+
+func (r *Registry) recordProviderMetadata(code string, meta ManifestProvider) {
+	if meta.isZero() {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.manifestMeta[code] = meta
 }
