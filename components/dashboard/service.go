@@ -18,7 +18,9 @@ var (
 	errInvalidDefinition  = errors.New("dashboard: definition id is required")
 )
 
-// Options configures the dashboard Service.
+// Options configures the dashboard Service. Every collaborator is provided via
+// interface so applications can swap implementations without importing internal
+// go-dashboard packages.
 type Options struct {
 	WidgetStore     WidgetStore
 	Authorizer      Authorizer
