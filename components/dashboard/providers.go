@@ -54,4 +54,7 @@ var defaultProviders = map[string]Provider{
 			},
 		}, nil
 	}),
+	"admin.widget.analytics_funnel": NewFunnelAnalyticsProvider(DemoFunnelRepository{}),
+	"admin.widget.cohort_overview":  NewCohortAnalyticsProvider(DemoCohortRepository{}),
+	"admin.widget.alert_trends":     NewAlertTrendsProvider(DemoAlertRepository{}),
 }
