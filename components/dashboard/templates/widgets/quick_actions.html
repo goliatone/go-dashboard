@@ -1,0 +1,11 @@
+<div class="widget widget--actions">
+  <header><h3>Quick Actions</h3></header>
+  <div class="widget__actions">
+    {% for action in widget.data.actions %}
+      <a href="{{ action.route }}" class="button">
+        {% if action.icon %}<i class="icon icon-{{ action.icon }}"></i>{% endif %}
+        {{ action.label }}
+      </a>
+    {% endfor %}
+  </div>
+</div>

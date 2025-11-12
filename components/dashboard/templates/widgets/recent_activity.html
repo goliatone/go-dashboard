@@ -1,0 +1,11 @@
+<div class="widget widget--activity">
+  <header><h3>Recent Activity</h3></header>
+  <ul>
+    {% for item in widget.data.items %}
+      <li>
+        <strong>{{ item.user }}</strong> {{ item.action }}
+        <span class="widget__meta">{{ item.ago }} ago</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>

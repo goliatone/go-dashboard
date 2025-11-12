@@ -1,0 +1,23 @@
+{% extends "layouts/base.html" %}
+
+{% block content %}
+<div class="dashboard">
+  <div class="dashboard__header">
+    <h1>{{ title or "Dashboard" }}</h1>
+    {% if description %}
+    <p>{{ description }}</p>
+    {% endif %}
+  </div>
+  <div class="dashboard__body">
+    <div class="dashboard__column dashboard__column--main">
+      {% include "components/dashboard/area.html" with area=areas.main %}
+    </div>
+    <aside class="dashboard__column dashboard__column--sidebar">
+      {% include "components/dashboard/area.html" with area=areas.sidebar %}
+    </aside>
+  </div>
+  <div class="dashboard__footer">
+    {% include "components/dashboard/area.html" with area=areas.footer %}
+  </div>
+</div>
+{% endblock %}

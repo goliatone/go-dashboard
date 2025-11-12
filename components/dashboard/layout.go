@@ -1,27 +1,25 @@
 package dashboard
 
-import "context"
-
-// ViewerContext captures the active user/locale information needed to render dashboards.
-type ViewerContext struct {
-	UserID string
-	Roles  []string
-	Locale string
-}
-
-// Layout describes the resolved widget instances per dashboard area.
-type Layout struct {
-	Areas map[string][]WidgetInstance
-}
-
-// WidgetInstance is a lightweight placeholder struct until go-cms integration lands.
-type WidgetInstance struct {
-	ID           string
-	DefinitionID string
-	Config       map[string]any
-}
-
-// ConfigureLayout resolves the final widget arrangement for a user.
-func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (Layout, error) {
-	return Layout{Areas: map[string][]WidgetInstance{}}, nil
+func applyOrderOverride(widgets []WidgetInstance, order []string) []WidgetInstance {
+	if len(order) == 0 {
+		return widgets
+	}
+	index := make(map[string]WidgetInstance, len(widgets))
+	for _, w := range widgets {
+		index[w.ID] = w
+	}
+	result := make([]WidgetInstance, 0, len(widgets))
+	seen := make(map[string]struct{}, len(order))
+	for _, id := range order {
+		if w, ok := index[id]; ok {
+			result = append(result, w)
+			seen[id] = struct{}{}
+		}
+	}
+	for _, w := range widgets {
+		if _, ok := seen[w.ID]; !ok {
+			result = append(result, w)
+		}
+	}
+	return result
 }

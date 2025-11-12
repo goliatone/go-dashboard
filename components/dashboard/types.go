@@ -25,6 +25,7 @@ type Authorizer interface {
 // PreferenceStore returns layout overrides per viewer.
 type PreferenceStore interface {
 	LayoutOverrides(ctx context.Context, viewer ViewerContext) (LayoutOverrides, error)
+	SaveLayoutOverrides(ctx context.Context, viewer ViewerContext, overrides LayoutOverrides) error
 }
 
 // ProviderRegistry stores widget definitions/providers discoverable via hooks or manifests.
@@ -59,16 +60,16 @@ type WidgetDefinition struct {
 
 // WidgetInstance represents a widget instance stored in go-cms.
 type WidgetInstance struct {
-	ID           string
-	DefinitionID string
-	AreaCode     string
+	ID            string
+	DefinitionID  string
+	AreaCode      string
 	Configuration map[string]any
-	Metadata     map[string]any
+	Metadata      map[string]any
 }
 
 // CreateWidgetInstanceInput configures new instances.
 type CreateWidgetInstanceInput struct {
-	DefinitionID string
+	DefinitionID  string
 	Configuration map[string]any
 	Visibility    WidgetVisibility
 	Metadata      map[string]any
@@ -91,7 +92,7 @@ type AssignWidgetInput struct {
 
 // ReorderAreaInput represents a new ordering for widgets within an area.
 type ReorderAreaInput struct {
-	AreaCode string
+	AreaCode  string
 	WidgetIDs []string
 }
 
@@ -111,6 +112,18 @@ type ResolvedArea struct {
 // LayoutOverrides captures per-user adjustments.
 type LayoutOverrides struct {
 	AreaOrder map[string][]string
+}
+
+// ViewerContext captures the active user/locale information needed to render dashboards.
+type ViewerContext struct {
+	UserID string
+	Roles  []string
+	Locale string
+}
+
+// Layout describes the resolved widget instances per dashboard area.
+type Layout struct {
+	Areas map[string][]WidgetInstance
 }
 
 // WidgetEvent describes changes that transports might care about.

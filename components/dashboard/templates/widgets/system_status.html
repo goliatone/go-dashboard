@@ -1,0 +1,11 @@
+<div class="widget widget--status">
+  <header><h3>System Status</h3></header>
+  <ul>
+    {% for check in widget.data.checks %}
+      <li class="status status--{{ check.status }}">
+        <span>{{ check.name }}</span>
+        <span>{{ check.status|upper }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>

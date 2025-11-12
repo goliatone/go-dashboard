@@ -1,0 +1,13 @@
+{% if area.widgets|length == 0 %}
+<div class="dashboard-area dashboard-area--empty">
+  <p>No widgets configured for {{ area.code }}.</p>
+</div>
+{% else %}
+<div class="dashboard-area" data-area="{{ area.code }}">
+  {% for widget in area.widgets %}
+    <section class="dashboard-widget" data-widget="{{ widget.id }}">
+      {% include widget.template with widget=widget %}
+    </section>
+  {% endfor %}
+</div>
+{% endif %}
