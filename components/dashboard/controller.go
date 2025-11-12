@@ -76,11 +76,12 @@ func (c *Controller) widgetsPayload(instances []WidgetInstance) []map[string]any
 			data = inst.Metadata["data"]
 		}
 		widgets = append(widgets, map[string]any{
-			"id":        inst.ID,
-			"template":  fmt.Sprintf("widgets/%s.html", inst.DefinitionID),
-			"config":    inst.Configuration,
-			"data":      data,
-			"area_code": inst.AreaCode,
+			"id":         inst.ID,
+			"definition": inst.DefinitionID,
+			"template":   fmt.Sprintf("widgets/%s.html", inst.DefinitionID),
+			"config":     inst.Configuration,
+			"data":       data,
+			"area_code":  inst.AreaCode,
 		})
 	}
 	return widgets
