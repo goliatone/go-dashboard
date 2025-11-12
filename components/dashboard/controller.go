@@ -2,10 +2,8 @@ package dashboard
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 )
 
 // LayoutResolver fetches layouts for a viewer.
@@ -46,27 +44,6 @@ func (c *Controller) Render(ctx context.Context, viewer ViewerContext) (Layout, 
 		return Layout{}, fmt.Errorf("dashboard: controller missing service")
 	}
 	return c.service.ConfigureLayout(ctx, viewer)
-}
-
-// HandleDashboard renders the HTML dashboard page using the configured renderer.
-func (c *Controller) HandleDashboard(w http.ResponseWriter, r *http.Request, viewer ViewerContext) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := c.RenderTemplate(r.Context(), viewer, w); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-// HandleDashboardJSON returns the dashboard layout as JSON (useful for SPAs/tests).
-func (c *Controller) HandleDashboardJSON(w http.ResponseWriter, r *http.Request, viewer ViewerContext) {
-	layout, err := c.Render(r.Context(), viewer)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(layout); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
 }
 
 func (c *Controller) payloadFromLayout(layout Layout) map[string]any {

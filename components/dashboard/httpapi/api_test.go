@@ -1,11 +1,7 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/goliatone/go-dashboard/components/dashboard"
@@ -24,64 +20,57 @@ func (s *stubCommander[T]) Execute(ctx context.Context, msg T) error {
 	return s.err
 }
 
-func TestHandleAssignWidget(t *testing.T) {
+func TestCommandExecutorAssign(t *testing.T) {
 	assign := &stubCommander[dashboard.AddWidgetRequest]{}
-	api := &Handlers{Assign: assign}
-	payload := dashboard.AddWidgetRequest{DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main"}
-	buf, _ := json.Marshal(payload)
-	req := httptest.NewRequest(http.MethodPost, "/widgets", bytes.NewReader(buf))
-	rec := httptest.NewRecorder()
-	api.HandleAssignWidget(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d", rec.Code)
+	exec := &CommandExecutor{AssignCommander: assign}
+	req := dashboard.AddWidgetRequest{DefinitionID: "def", AreaCode: "area"}
+	if err := exec.Assign(context.Background(), req); err != nil {
+		t.Fatalf("Assign returned error: %v", err)
 	}
 	if assign.calls != 1 {
-		t.Fatalf("expected assign to execute")
+		t.Fatalf("expected assign command execution")
 	}
 }
 
-func TestHandleRemoveWidget(t *testing.T) {
+func TestCommandExecutorRemove(t *testing.T) {
 	remove := &stubCommander[commands.RemoveWidgetInput]{}
-	api := &Handlers{Remove: remove}
-	req := httptest.NewRequest(http.MethodDelete, "/widgets/w1", nil)
-	rec := httptest.NewRecorder()
-	api.HandleRemoveWidget(rec, req, "w1")
-	if rec.Code != http.StatusNoContent {
-		t.Fatalf("expected 204, got %d", rec.Code)
+	exec := &CommandExecutor{RemoveCommander: remove}
+	input := commands.RemoveWidgetInput{WidgetID: "widget-1"}
+	if err := exec.Remove(context.Background(), input); err != nil {
+		t.Fatalf("Remove returned error: %v", err)
 	}
-	if remove.last.WidgetID != "w1" {
+	if remove.last.WidgetID != "widget-1" {
 		t.Fatalf("expected widget id propagation")
 	}
 }
 
-func TestHandleReorderWidgets(t *testing.T) {
+func TestCommandExecutorReorder(t *testing.T) {
 	reorder := &stubCommander[commands.ReorderWidgetsInput]{}
-	api := &Handlers{Reorder: reorder}
-	payload := commands.ReorderWidgetsInput{AreaCode: "admin.dashboard.main", WidgetIDs: []string{"w1", "w2"}}
-	buf, _ := json.Marshal(payload)
-	req := httptest.NewRequest(http.MethodPost, "/widgets/reorder", bytes.NewReader(buf))
-	rec := httptest.NewRecorder()
-	api.HandleReorderWidgets(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+	exec := &CommandExecutor{ReorderCommander: reorder}
+	input := commands.ReorderWidgetsInput{AreaCode: "area", WidgetIDs: []string{"w1", "w2"}}
+	if err := exec.Reorder(context.Background(), input); err != nil {
+		t.Fatalf("Reorder returned error: %v", err)
 	}
 	if reorder.calls != 1 {
-		t.Fatalf("expected reorder to execute")
+		t.Fatalf("expected reorder execution")
 	}
 }
 
-func TestHandleRefreshWidget(t *testing.T) {
+func TestCommandExecutorRefresh(t *testing.T) {
 	refresh := &stubCommander[commands.RefreshWidgetInput]{}
-	api := &Handlers{Refresh: refresh}
-	payload := commands.RefreshWidgetInput{Event: dashboard.WidgetEvent{AreaCode: "admin.dashboard.main"}}
-	buf, _ := json.Marshal(payload)
-	req := httptest.NewRequest(http.MethodPost, "/widgets/refresh", bytes.NewReader(buf))
-	rec := httptest.NewRecorder()
-	api.HandleRefreshWidget(rec, req)
-	if rec.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d", rec.Code)
+	exec := &CommandExecutor{RefreshCommander: refresh}
+	input := commands.RefreshWidgetInput{Event: dashboard.WidgetEvent{AreaCode: "area"}}
+	if err := exec.Refresh(context.Background(), input); err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
 	}
 	if refresh.calls != 1 {
-		t.Fatalf("expected refresh to execute")
+		t.Fatalf("expected refresh execution")
+	}
+}
+
+func TestCommandExecutorMissingCommand(t *testing.T) {
+	exec := &CommandExecutor{}
+	if err := exec.Assign(context.Background(), dashboard.AddWidgetRequest{}); err == nil {
+		t.Fatalf("expected error when assign command missing")
 	}
 }

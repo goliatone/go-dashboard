@@ -1,10 +1,13 @@
 # Dashboard Commands
 
-Holds all `go-command.Commander` implementations for dashboard mutations:
+This package contains the `go-command.Commander` implementations that wrap every
+state-changing workflow exposed by go-dashboard:
 
-- Seeding widget areas/definitions/layouts.
-- Assigning/removing/reordering widgets.
-- Refresh hooks that notify transports of updates.
+- `SeedDashboardCommand` bootstraps widget areas, definitions, and optional layouts.
+- `AssignWidgetCommand`, `RemoveWidgetCommand`, and `ReorderWidgetsCommand`
+  encapsulate CRUD operations so HTTP/WebSocket transports stay thin.
+- `RefreshWidgetCommand` fans out events via the configured `RefreshHook`.
 
-Phase 1+2 tasks will flesh out actual commands; for now this README marks
-the directory purpose so future contributors understand the layout.
+Each command records telemetry and depends only on interfaces (`dashboard.Service`,
+`WidgetStore`, etc.), which keeps them reusable by REST handlers, background jobs,
+or CLIs. Tests under this directory validate wiring without hitting go-cms.

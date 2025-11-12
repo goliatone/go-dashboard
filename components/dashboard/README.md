@@ -2,20 +2,20 @@
 
 This package hosts the core building blocks described in `DSH_TDD.md`:
 
-- `service.go` – public API for orchestrating go-cms widgets.
-- `bootstrap.go` – helpers that register widget areas/definitions.
-- `provider.go` – provider and registry interfaces for widget data.
-- `layout.go` – runtime layout resolution and preference plumbing.
-- `controller.go` – HTTP/glue helpers for routing dashboards.
-- `commands/` – `go-command.Commander` implementations for mutations.
-- `queries/` – read-only query objects for layout/widget inspection.
-- `httpapi/` – REST handlers that wrap command executions.
-- `templates/` – default go-template views + widget partials.
-- `refresh_broadcast.go` – optional broadcast + WebSocket/SSE hooks.
+- `service.go` – orchestrates go-cms widgets and provider execution.
+- `bootstrap.go` – registers widget areas/definitions and seeds defaults.
+- `provider.go` / `providers.go` – provider interfaces plus canonical widgets.
+- `layout.go` – merges go-cms data with preference overrides + auth filters.
+- `controller.go` – framework-agnostic controller invoked by transports.
+- `commands/` – `go-command.Commander` implementations for seeding and CRUD.
+- `queries/` – read-only helpers (layout resolution, area inspection).
+- `httpapi/` – router-agnostic executor interface backed by the commands.
+- `gorouter/` – go-router adapter that mounts HTML, JSON, CRUD, WebSocket routes.
+- `templates/` – embedded go-template dashboard and widget partials.
+- `refresh_broadcast.go` – in-process broadcast hook consumed by transports.
 
-All implementation files start as placeholders so we can iterate without
-blocking Phase 1 tasks. As functionality lands, expand this README with
-more detailed guidance and diagrams.
+The directory now contains the production-ready implementation; refer to
+`docs/TRANSPORTS.md` for diagrams and integration notes.
 
 ## Widget Registration Options
 

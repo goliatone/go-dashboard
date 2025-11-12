@@ -3,12 +3,13 @@ package gorouter
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"testing"
 
 	router "github.com/goliatone/go-router"
 
 	"github.com/goliatone/go-dashboard/components/dashboard"
-	"github.com/goliatone/go-dashboard/components/dashboard/httpapi"
+	"github.com/goliatone/go-dashboard/components/dashboard/commands"
 )
 
 func TestRegisterValidatesConfig(t *testing.T) {
@@ -37,7 +38,7 @@ func TestRegisterHTMLRoute(t *testing.T) {
 	cfg := Config[struct{}]{
 		Router:     mock,
 		Controller: controller,
-		API:        &httpapi.Handlers{},
+		API:        noopExecutor{},
 	}
 	if err := Register(cfg); err != nil {
 		t.Fatalf("register returned error: %v", err)
@@ -196,3 +197,10 @@ func (s *stubRenderer) Render(name string, data any, out ...io.Writer) (string, 
 	}
 	return "ok", nil
 }
+
+type noopExecutor struct{}
+
+func (noopExecutor) Assign(context.Context, dashboard.AddWidgetRequest) error            { return nil }
+func (noopExecutor) Remove(context.Context, commands.RemoveWidgetInput) error           { return nil }
+func (noopExecutor) Reorder(context.Context, commands.ReorderWidgetsInput) error        { return nil }
+func (noopExecutor) Refresh(context.Context, commands.RefreshWidgetInput) error         { return nil }

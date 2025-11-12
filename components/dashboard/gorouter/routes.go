@@ -20,7 +20,7 @@ type ViewerResolver func(router.Context) dashboard.ViewerContext
 type Config[T any] struct {
 	Router         router.Router[T]
 	Controller     *dashboard.Controller
-	API            *httpapi.Handlers
+	API            httpapi.Executor
 	Broadcast      *dashboard.BroadcastHook
 	ViewerResolver ViewerResolver
 	BasePath       string
@@ -75,55 +75,55 @@ func Register[T any](cfg Config[T]) error {
 	return nil
 }
 
-func registerAPI[T any](router router.Router[T], api *httpapi.Handlers) {
-	router.Post("/dashboard/widgets", router.WrapHandler(func(ctx router.Context) error {
+func registerAPI[T any](r router.Router[T], api httpapi.Executor) {
+	r.Post("/dashboard/widgets", router.WrapHandler(func(ctx router.Context) error {
 		var payload dashboard.AddWidgetRequest
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Assign.Execute(ctx.Context(), payload); err != nil {
+		if err := api.Assign(ctx.Context(), payload); err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
 		return ctx.JSON(http.StatusCreated, map[string]string{"status": "created"})
 	}))
 
-	router.Delete("/dashboard/widgets/:id", router.WrapHandler(func(ctx router.Context) error {
+	r.Delete("/dashboard/widgets/:id", router.WrapHandler(func(ctx router.Context) error {
 		id := ctx.Param("id")
 		if id == "" {
 			return respondError(ctx, http.StatusBadRequest, errors.New("widget id is required"))
 		}
-		if err := api.Remove.Execute(ctx.Context(), commands.RemoveWidgetInput{WidgetID: id}); err != nil {
+		if err := api.Remove(ctx.Context(), commands.RemoveWidgetInput{WidgetID: id}); err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
 		return ctx.JSON(http.StatusNoContent, map[string]string{"status": "removed"})
 	}))
 
-	router.Post("/dashboard/widgets/reorder", router.WrapHandler(func(ctx router.Context) error {
+	r.Post("/dashboard/widgets/reorder", router.WrapHandler(func(ctx router.Context) error {
 		var payload commands.ReorderWidgetsInput
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Reorder.Execute(ctx.Context(), payload); err != nil {
+		if err := api.Reorder(ctx.Context(), payload); err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
 		return ctx.JSON(http.StatusOK, map[string]string{"status": "reordered"})
 	}))
 
-	router.Post("/dashboard/widgets/refresh", router.WrapHandler(func(ctx router.Context) error {
+	r.Post("/dashboard/widgets/refresh", router.WrapHandler(func(ctx router.Context) error {
 		var payload commands.RefreshWidgetInput
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Refresh.Execute(ctx.Context(), payload); err != nil {
+		if err := api.Refresh(ctx.Context(), payload); err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
 		return ctx.JSON(http.StatusAccepted, map[string]string{"status": "queued"})
 	}))
 }
 
-func registerWebSocket[T any](router router.Router[T], hook *dashboard.BroadcastHook) {
+func registerWebSocket[T any](r router.Router[T], hook *dashboard.BroadcastHook) {
 	cfg := router.DefaultWebSocketConfig()
-	router.WebSocket("/dashboard/ws", cfg, func(ws router.WebSocketContext) error {
+	r.WebSocket("/dashboard/ws", cfg, func(ws router.WebSocketContext) error {
 		events, cancel := hook.Subscribe()
 		defer cancel()
 		for {

@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -22,14 +21,4 @@ func TestBroadcastHookSubscribe(t *testing.T) {
 	default:
 		t.Fatalf("expected event to be delivered")
 	}
-}
-
-func TestBroadcastHookServeSSETerminatesOnContext(t *testing.T) {
-	hook := NewBroadcastHook()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	req := httptest.NewRequest("GET", "/sse", nil).WithContext(ctx)
-	rec := httptest.NewRecorder()
-	go hook.ServeSSE(rec, req)
-	cancel()
 }

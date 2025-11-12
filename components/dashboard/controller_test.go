@@ -1,10 +1,9 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -34,7 +33,7 @@ func (r *stubRenderer) Render(name string, data any, out ...io.Writer) (string, 
 	return "<html></html>", r.err
 }
 
-func TestControllerHandleDashboard(t *testing.T) {
+func TestControllerRenderTemplate(t *testing.T) {
 	service := &stubLayoutResolver{
 		layout: Layout{
 			Areas: map[string][]WidgetInstance{
@@ -51,14 +50,14 @@ func TestControllerHandleDashboard(t *testing.T) {
 		Template: "dashboard.html",
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
-	rec := httptest.NewRecorder()
-	controller.HandleDashboard(rec, req, ViewerContext{UserID: "user"})
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rec.Code)
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user"}, &buf); err != nil {
+		t.Fatalf("RenderTemplate returned error: %v", err)
 	}
 	if renderer.lastTemplate != "dashboard.html" {
 		t.Fatalf("expected dashboard template to render, got %s", renderer.lastTemplate)
+	}
+	if buf.Len() == 0 {
+		t.Fatalf("expected rendered output")
 	}
 }

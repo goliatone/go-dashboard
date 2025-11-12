@@ -1,8 +1,12 @@
 # Dashboard Queries
 
-Encapsulates read-only operations (layout inspection, widget lookups,
-preference snapshots) so transports/test suites can reuse common query
-code without depending on the full service.
+Encapsulates read-only operations so transports/test suites can reuse common
+logic without depending on the entire dashboard service:
 
-The directory currently contains stubs; populate with concrete queries
-during Phase 2 once data contracts are finalized.
+- `LayoutQuery` resolves the full dashboard layout for a viewer.
+- `WidgetAreaQuery` fetches a single area (`admin.dashboard.main`, etc.) with
+  the correct audience, locale, and provider metadata applied.
+
+The queries wrap `dashboard.Service` interfaces and satisfy
+`go-command.Querier`, making them easy to plug into schedulers, GraphQL
+resolvers, or other read-focused transports.
