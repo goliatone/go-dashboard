@@ -1,6 +1,7 @@
 package gorouter
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -66,6 +67,15 @@ func TestRegisterHTMLRoute(t *testing.T) {
 	if renderer.calls == 0 {
 		t.Fatalf("renderer not invoked")
 	}
+
+	prefReq := httptest.NewRequest(http.MethodPost, "/admin/dashboard/preferences", bytes.NewBufferString(`{"area_order":{"admin.dashboard.main":["w1"]}}`))
+	resp, err = fiberAdapter.WrappedRouter().Test(prefReq)
+	if err != nil {
+		t.Fatalf("preferences request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected preferences 200, got %d", resp.StatusCode)
+	}
 }
 
 type stubLayoutResolver struct {
@@ -95,3 +105,6 @@ func (noopExecutor) Assign(context.Context, dashboard.AddWidgetRequest) error   
 func (noopExecutor) Remove(context.Context, commands.RemoveWidgetInput) error    { return nil }
 func (noopExecutor) Reorder(context.Context, commands.ReorderWidgetsInput) error { return nil }
 func (noopExecutor) Refresh(context.Context, commands.RefreshWidgetInput) error  { return nil }
+func (noopExecutor) Preferences(context.Context, commands.SaveLayoutPreferencesInput) error {
+	return nil
+}

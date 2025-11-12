@@ -74,3 +74,15 @@ func TestCommandExecutorMissingCommand(t *testing.T) {
 		t.Fatalf("expected error when assign command missing")
 	}
 }
+
+func TestCommandExecutorPreferences(t *testing.T) {
+	prefs := &stubCommander[commands.SaveLayoutPreferencesInput]{}
+	exec := &CommandExecutor{PrefsCommander: prefs}
+	input := commands.SaveLayoutPreferencesInput{Viewer: dashboard.ViewerContext{UserID: "user"}}
+	if err := exec.Preferences(context.Background(), input); err != nil {
+		t.Fatalf("Preferences returned error: %v", err)
+	}
+	if prefs.calls != 1 {
+		t.Fatalf("expected preferences execution")
+	}
+}

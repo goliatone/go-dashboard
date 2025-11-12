@@ -79,11 +79,30 @@ func TestRefreshWidgetCommand(t *testing.T) {
 	}
 }
 
+func TestSaveLayoutPreferencesCommand(t *testing.T) {
+	service := &stubService{}
+	cmd := NewSaveLayoutPreferencesCommand(service, nil)
+	input := SaveLayoutPreferencesInput{
+		Viewer: dashboard.ViewerContext{UserID: "user-1"},
+		AreaOrder: map[string][]string{
+			"admin.dashboard.main": {"w2", "w1"},
+		},
+		HiddenWidgets: []string{"w3"},
+	}
+	if err := cmd.Execute(context.Background(), input); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if service.savePrefCalls != 1 {
+		t.Fatalf("expected preferences save")
+	}
+}
+
 type stubService struct {
-	addCalls     int
-	removeCalls  int
-	reorderCalls int
-	refreshCalls int
+	addCalls      int
+	removeCalls   int
+	reorderCalls  int
+	refreshCalls  int
+	savePrefCalls int
 }
 
 func (s *stubService) AddWidget(context.Context, dashboard.AddWidgetRequest) error {
@@ -103,6 +122,11 @@ func (s *stubService) ReorderWidgets(context.Context, string, []string) error {
 
 func (s *stubService) NotifyWidgetUpdated(context.Context, dashboard.WidgetEvent) error {
 	s.refreshCalls++
+	return nil
+}
+
+func (s *stubService) SavePreferences(context.Context, dashboard.ViewerContext, dashboard.LayoutOverrides) error {
+	s.savePrefCalls++
 	return nil
 }
 

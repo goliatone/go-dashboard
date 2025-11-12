@@ -31,6 +31,35 @@ func TestConfigureLayoutFiltersByAuthorizer(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutAppliesHiddenOverrides(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{ID: "w1", DefinitionID: "admin.widget.user_stats"},
+				{ID: "w2", DefinitionID: "admin.widget.user_stats"},
+			},
+		},
+	}
+	prefs := NewInMemoryPreferenceStore()
+	viewer := ViewerContext{UserID: "user-3"}
+	_ = prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
+		AreaOrder:     map[string][]string{"admin.dashboard.main": {"w1", "w2"}},
+		HiddenWidgets: map[string]bool{"w2": true},
+	})
+	service := NewService(Options{
+		WidgetStore:     store,
+		PreferenceStore: prefs,
+	})
+	layout, err := service.ConfigureLayout(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	widgets := layout.Areas["admin.dashboard.main"]
+	if len(widgets) != 1 || widgets[0].ID != "w1" {
+		t.Fatalf("expected hidden widget filtered, got %#v", widgets)
+	}
+}
+
 func TestConfigureLayoutAppliesPreferenceOverrides(t *testing.T) {
 	store := &fakeWidgetStore{
 		resolved: map[string][]WidgetInstance{
@@ -236,5 +265,33 @@ func TestAddWidgetValidatesInputs(t *testing.T) {
 	err := service.AddWidget(context.Background(), AddWidgetRequest{})
 	if !errors.Is(err, errInvalidArea) && err == nil {
 		t.Fatalf("expected validation error, got %v", err)
+	}
+}
+
+func TestSavePreferencesRequiresUser(t *testing.T) {
+	service := NewService(Options{})
+	err := service.SavePreferences(context.Background(), ViewerContext{}, LayoutOverrides{})
+	if err == nil {
+		t.Fatalf("expected error when user missing")
+	}
+}
+
+func TestSavePreferencesStoresOverrides(t *testing.T) {
+	prefs := NewInMemoryPreferenceStore()
+	service := NewService(Options{PreferenceStore: prefs})
+	viewer := ViewerContext{UserID: "user-4"}
+	overrides := LayoutOverrides{
+		AreaOrder:     map[string][]string{"admin.dashboard.main": {"w2", "w1"}},
+		HiddenWidgets: map[string]bool{"w3": true},
+	}
+	if err := service.SavePreferences(context.Background(), viewer, overrides); err != nil {
+		t.Fatalf("SavePreferences returned error: %v", err)
+	}
+	stored, err := prefs.LayoutOverrides(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("LayoutOverrides returned error: %v", err)
+	}
+	if !stored.HiddenWidgets["w3"] {
+		t.Fatalf("expected hidden widget persisted")
 	}
 }
