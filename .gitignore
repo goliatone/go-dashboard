@@ -1,0 +1,9 @@
+# Build cache for local go commands
+.gocache/
+
+# Go build artifacts
+bin/
+coverage.out
+
+# macOS metadata
+.DS_Store
