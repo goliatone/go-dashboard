@@ -44,18 +44,18 @@ type RefreshHook interface {
 
 // WidgetAreaDefinition models a dashboard widget area (main/sidebar/footer).
 type WidgetAreaDefinition struct {
-	Code        string
-	Name        string
-	Description string
+	Code        string `json:"code" yaml:"code"`
+	Name        string `json:"name" yaml:"name"`
+	Description string `json:"description,omitempty" yaml:"description,omitempty"`
 }
 
 // WidgetDefinition describes a widget schema stored within go-cms.
 type WidgetDefinition struct {
-	Code        string
-	Name        string
-	Description string
-	Schema      map[string]any
-	Category    string
+	Code        string         `json:"code" yaml:"code"`
+	Name        string         `json:"name" yaml:"name"`
+	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
+	Schema      map[string]any `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Category    string         `json:"category,omitempty" yaml:"category,omitempty"`
 }
 
 // WidgetInstance represents a widget instance stored in go-cms.
