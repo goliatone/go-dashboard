@@ -1,0 +1,26 @@
+<div class="widget widget--analytics widget--cohort">
+  <header>
+    <h3>Cohort Overview</h3>
+    <small>{{ widget.data.interval or "weekly" }} · Metric: {{ widget.data.metric or "retained" }}</small>
+  </header>
+  <div class="cohort-list">
+    {% for row in widget.data.rows %}
+    <article class="cohort-list__row">
+      <div class="cohort-list__meta">
+        <strong>{{ row.label }}</strong>
+        <span>{{ row.size }} signups</span>
+      </div>
+      <ul class="cohort-list__retention">
+        {% for rate in row.retention %}
+        <li>
+          <span>P{{ loop.index }}</span>
+          <div class="cohort__cell" style="--rate: {{ rate }}%">
+            <strong>{{ rate }}%</strong>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </div>
+</div>

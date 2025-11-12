@@ -1,0 +1,27 @@
+<div class="widget widget--analytics widget--alerts">
+  <header>
+    <h3>Alert Trends</h3>
+    <small>{{ widget.data.service or "All Services" }} · Last {{ widget.data.lookback_days or 30 }} days</small>
+  </header>
+  <div class="alert-trends__legend">
+    {% for item in widget.data.severities %}
+    <span class="alert-trends__badge alert-trends__badge--{{ item.severity }}">
+      {{ item.severity|upper }} · {{ item.count }}
+    </span>
+    {% endfor %}
+  </div>
+  <ul class="alert-trends__series">
+    {% for bucket in widget.data.series %}
+    <li class="alert-trends__row">
+      <span class="alert-trends__date">{{ bucket.day }}</span>
+      <div class="alert-trends__bars">
+        {% for point in bucket.counts %}
+        <div class="alert-trends__bar alert-trends__bar--{{ point.severity }}" style="width: {{ point.count * 4 }}px;">
+          <small>{{ point.count }}</small>
+        </div>
+        {% endfor %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>

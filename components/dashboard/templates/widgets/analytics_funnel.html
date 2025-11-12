@@ -1,0 +1,26 @@
+<div class="widget widget--analytics widget--funnel">
+  <header>
+    <h3>Conversion Funnel</h3>
+    <small>{{ widget.data.range or "30d" }} · {{ widget.data.segment or "All users" }}</small>
+  </header>
+  <div class="widget__meta">
+    <span>Conversion: {{ widget.data.conversion_rate or 0 }}%</span>
+    <span>Goal: {{ widget.data.goal or 0 }}%</span>
+  </div>
+  <ol class="funnel-steps">
+    {% for step in widget.data.steps %}
+    <li class="funnel-steps__item">
+      <div class="funnel-steps__bar">
+        <span style="width: {{ step.percent }}%;"></span>
+      </div>
+      <div class="funnel-steps__label">
+        <strong>{{ step.label }}</strong>
+        <span>{{ step.value }} records</span>
+        {% if step.position > 0 %}
+        <small>{{ step.dropoff or 0 }}% drop</small>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</div>
