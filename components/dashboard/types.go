@@ -51,11 +51,13 @@ type WidgetAreaDefinition struct {
 
 // WidgetDefinition describes a widget schema stored within go-cms.
 type WidgetDefinition struct {
-	Code        string         `json:"code" yaml:"code"`
-	Name        string         `json:"name" yaml:"name"`
-	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Schema      map[string]any `json:"schema,omitempty" yaml:"schema,omitempty"`
-	Category    string         `json:"category,omitempty" yaml:"category,omitempty"`
+	Code                 string            `json:"code" yaml:"code"`
+	Name                 string            `json:"name" yaml:"name"`
+	NameLocalized        map[string]string `json:"name_localized,omitempty" yaml:"name_localized,omitempty"`
+	Description          string            `json:"description,omitempty" yaml:"description,omitempty"`
+	DescriptionLocalized map[string]string `json:"description_localized,omitempty" yaml:"description_localized,omitempty"`
+	Schema               map[string]any    `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Category             string            `json:"category,omitempty" yaml:"category,omitempty"`
 }
 
 // WidgetInstance represents a widget instance stored in go-cms.
@@ -111,6 +113,7 @@ type ResolvedArea struct {
 
 // LayoutOverrides captures per-user adjustments.
 type LayoutOverrides struct {
+	Locale        string
 	AreaOrder     map[string][]string
 	HiddenWidgets map[string]bool
 }
