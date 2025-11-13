@@ -78,6 +78,75 @@ func TestRegisterHTMLRoute(t *testing.T) {
 	}
 }
 
+func TestRegisterWithCustomRoutes(t *testing.T) {
+	server := router.NewFiberAdapter()
+	appRouter := server.Router()
+	layout := dashboard.Layout{
+		Areas: map[string][]dashboard.WidgetInstance{
+			"admin.dashboard.main": {
+				{ID: "w1", DefinitionID: "admin.widget.user_stats"},
+			},
+		},
+	}
+	service := &stubLayoutResolver{layout: layout}
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service:  service,
+		Renderer: &stubRenderer{},
+	})
+
+	cfg := Config[*fiber.App]{
+		Router:     appRouter,
+		Controller: controller,
+		API:        noopExecutor{},
+		BasePath:   "/console",
+		Routes: RouteConfig{
+			HTML:        "/home",
+			Layout:      "/home/layout.json",
+			Widgets:     "/widgets",
+			WidgetID:    "/widgets/:id",
+			Reorder:     "/widgets/order",
+			Refresh:     "/widgets/refresh",
+			Preferences: "/prefs",
+			WebSocket:   "/ws/live",
+		},
+	}
+	if err := Register(cfg); err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	fiberAdapter, ok := server.(interface {
+		WrappedRouter() *fiber.App
+	})
+	if !ok {
+		t.Fatalf("adapter does not expose wrapped router")
+	}
+
+	resp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/console/home", nil))
+	if err != nil {
+		t.Fatalf("fiber app test: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for custom HTML route, got %d", resp.StatusCode)
+	}
+
+	prefReq := httptest.NewRequest(http.MethodPost, "/console/prefs", bytes.NewBufferString(`{"area_order":{"admin.dashboard.main":["w1"]}}`))
+	resp, err = fiberAdapter.WrappedRouter().Test(prefReq)
+	if err != nil {
+		t.Fatalf("preferences request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected custom preferences route to return 200, got %d", resp.StatusCode)
+	}
+
+	legacyResp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil))
+	if err != nil {
+		t.Fatalf("legacy route request failed: %v", err)
+	}
+	if legacyResp.StatusCode == http.StatusOK {
+		t.Fatalf("expected default route to be unmapped when custom routes used")
+	}
+}
+
 type stubLayoutResolver struct {
 	layout dashboard.Layout
 	err    error
