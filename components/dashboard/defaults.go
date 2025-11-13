@@ -10,10 +10,16 @@ var defaultAreaDefinitions = []WidgetAreaDefinition{
 
 var defaultWidgetDefinitions = []WidgetDefinition{
 	{
-		Code:        "admin.widget.user_stats",
-		Name:        "User Statistics",
+		Code: "admin.widget.user_stats",
+		Name: "User Statistics",
+		NameLocalized: map[string]string{
+			"es": "Estadísticas de usuarios",
+		},
 		Description: "High-level user metrics",
-		Category:    "stats",
+		DescriptionLocalized: map[string]string{
+			"es": "Métricas clave de usuarios",
+		},
+		Category: "stats",
 		Schema: map[string]any{
 			"type":       "object",
 			"required":   []string{"metric"},
@@ -21,10 +27,16 @@ var defaultWidgetDefinitions = []WidgetDefinition{
 		},
 	},
 	{
-		Code:        "admin.widget.recent_activity",
-		Name:        "Recent Activity",
+		Code: "admin.widget.recent_activity",
+		Name: "Recent Activity",
+		NameLocalized: map[string]string{
+			"es": "Actividad reciente",
+		},
 		Description: "Latest activity feed entries",
-		Category:    "activity",
+		DescriptionLocalized: map[string]string{
+			"es": "Últimos eventos registrados",
+		},
+		Category: "activity",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -45,8 +57,11 @@ var defaultWidgetDefinitions = []WidgetDefinition{
 		},
 	},
 	{
-		Code:        "admin.widget.quick_actions",
-		Name:        "Quick Actions",
+		Code: "admin.widget.quick_actions",
+		Name: "Quick Actions",
+		NameLocalized: map[string]string{
+			"es": "Acciones rápidas",
+		},
 		Description: "Common admin shortcuts",
 		Category:    "actions",
 		Schema: map[string]any{
@@ -60,10 +75,16 @@ var defaultWidgetDefinitions = []WidgetDefinition{
 		},
 	},
 	{
-		Code:        "admin.widget.system_status",
-		Name:        "System Status",
+		Code: "admin.widget.system_status",
+		Name: "System Status",
+		NameLocalized: map[string]string{
+			"es": "Estado del sistema",
+		},
 		Description: "Health indicators",
-		Category:    "status",
+		DescriptionLocalized: map[string]string{
+			"es": "Indicadores de salud",
+		},
+		Category: "status",
 		Schema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
