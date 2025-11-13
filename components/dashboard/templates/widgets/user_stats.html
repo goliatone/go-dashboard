@@ -1,9 +1,9 @@
 <div class="widget widget--stats">
   <header>
-    <h3>{{ widget.data.title or "User Stats" }}</h3>
+    <h3>{{ widget.data.title or T("dashboard.widget.user_stats.title", locale, "User Stats") }}</h3>
   </header>
   <div class="widget__body">
     <p class="widget__stat">{{ widget.data.values[widget.config.metric] }}</p>
-    <small>Metric: {{ widget.config.metric }}</small>
+    <small>{{ T("dashboard.widget.user_stats.metric_label", locale, "Metric") }}: {{ widget.config.metric }}</small>
   </div>
 </div>

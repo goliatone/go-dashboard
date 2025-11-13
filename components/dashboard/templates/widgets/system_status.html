@@ -1,5 +1,5 @@
 <div class="widget widget--status">
-  <header><h3>System Status</h3></header>
+  <header><h3>{{ T("dashboard.widget.system_status.title", locale, "System Status") }}</h3></header>
   <ul>
     {% for check in widget.data.checks %}
       <li class="status status--{{ check.status }}">

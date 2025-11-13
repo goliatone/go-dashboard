@@ -1,5 +1,5 @@
 <div class="widget widget--actions">
-  <header><h3>Quick Actions</h3></header>
+  <header><h3>{{ T("dashboard.widget.quick_actions.title", locale, "Quick Actions") }}</h3></header>
   <div class="widget__actions">
     {% for action in widget.data.actions %}
       <a href="{{ action.route }}" class="button">

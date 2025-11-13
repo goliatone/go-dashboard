@@ -1,7 +1,7 @@
 <div class="widget widget--analytics widget--alerts">
   <header>
-    <h3>Alert Trends</h3>
-    <small>{{ widget.data.service or "All Services" }} · Last {{ widget.data.lookback_days or 30 }} days</small>
+    <h3>{{ T("dashboard.widget.alert_trends.title", locale, "Alert Trends") }}</h3>
+    <small>{{ widget.data.service or T("dashboard.widget.alert_trends.service_all", locale, "All Services") }} · {{ T("dashboard.widget.alert_trends.lookback_prefix", locale, "Last") }} {{ widget.data.lookback_days or 30 }} {{ T("dashboard.widget.alert_trends.lookback_suffix", locale, "days") }}</small>
   </header>
   <div class="alert-trends__legend">
     {% for item in widget.data.severities %}

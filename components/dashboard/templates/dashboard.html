@@ -3,21 +3,21 @@
 {% block content %}
 <div class="dashboard">
   <div class="dashboard__header">
-    <h1>{{ title or "Dashboard" }}</h1>
+    <h1>{{ T("dashboard.page.title", locale, title or "Dashboard") }}</h1>
     {% if description %}
-    <p>{{ description }}</p>
+    <p>{{ T("dashboard.page.description", locale, description) }}</p>
     {% endif %}
   </div>
   <div class="dashboard__body">
     <div class="dashboard__column dashboard__column--main">
-      {% include "components/dashboard/area.html" with area=areas.main %}
+      {% include "components/dashboard/area.html" with area=areas.main locale=locale %}
     </div>
     <aside class="dashboard__column dashboard__column--sidebar">
-      {% include "components/dashboard/area.html" with area=areas.sidebar %}
+      {% include "components/dashboard/area.html" with area=areas.sidebar locale=locale %}
     </aside>
   </div>
   <div class="dashboard__footer">
-    {% include "components/dashboard/area.html" with area=areas.footer %}
+    {% include "components/dashboard/area.html" with area=areas.footer locale=locale %}
   </div>
 </div>
 {% endblock %}

@@ -1,11 +1,11 @@
 <div class="widget widget--analytics widget--funnel">
   <header>
-    <h3>Conversion Funnel</h3>
-    <small>{{ widget.data.range or "30d" }} · {{ widget.data.segment or "All users" }}</small>
+    <h3>{{ T("dashboard.widget.analytics_funnel.title", locale, "Conversion Funnel") }}</h3>
+    <small>{{ widget.data.range or "30d" }} · {{ widget.data.segment or T("dashboard.widget.analytics_funnel.segment_all", locale, "All users") }}</small>
   </header>
   <div class="widget__meta">
-    <span>{{ (widget.data.conversion_rate or 0)|floatformat:1 }}% conversion</span>
-    <span>Goal {{ (widget.data.goal or widget.config.goal or 0)|floatformat:1 }}%</span>
+    <span>{{ (widget.data.conversion_rate or 0)|floatformat:1 }}% {{ T("dashboard.widget.analytics_funnel.conversion_label", locale, "conversion") }}</span>
+    <span>{{ T("dashboard.widget.analytics_funnel.goal_label", locale, "Goal") }} {{ (widget.data.goal or widget.config.goal or 0)|floatformat:1 }}%</span>
   </div>
   <ol class="funnel-steps">
     {% for step in widget.data.steps %}
@@ -15,9 +15,9 @@
       </div>
       <div class="funnel-steps__label">
         <strong>{{ step.label }}</strong>
-        <span>{{ step.value }} records</span>
+        <span>{{ step.value }} {{ T("dashboard.widget.analytics_funnel.records_label", locale, "records") }}</span>
         {% if step.position > 0 %}
-        <small>{{ step.dropoff or 0 }}% drop</small>
+        <small>{{ step.dropoff or 0 }}% {{ T("dashboard.widget.analytics_funnel.drop_label", locale, "drop") }}</small>
         {% endif %}
       </div>
     </li>
