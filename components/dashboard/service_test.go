@@ -88,6 +88,54 @@ func TestConfigureLayoutAppliesPreferenceOverrides(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutAppliesRowMetadata(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{ID: "w1", DefinitionID: "admin.widget.analytics_funnel"},
+				{ID: "w2", DefinitionID: "admin.widget.cohort_overview"},
+			},
+		},
+	}
+	prefs := NewInMemoryPreferenceStore()
+	viewer := ViewerContext{UserID: "user-rows"}
+	err := prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
+		AreaRows: map[string][]LayoutRow{
+			"admin.dashboard.main": {
+				{Widgets: []WidgetSlot{{ID: "w1", Width: 6}, {ID: "w2", Width: 6}}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SaveLayoutOverrides returned error: %v", err)
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		PreferenceStore: prefs,
+	})
+	layout, err := service.ConfigureLayout(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	widget := layout.Areas["admin.dashboard.main"][0]
+	meta, _ := widget.Metadata["layout"].(map[string]any)
+	if meta == nil {
+		t.Fatalf("expected layout metadata, none found")
+	}
+	var width int
+	switch val := meta["width"].(type) {
+	case int:
+		width = val
+	case float64:
+		width = int(val)
+	default:
+		t.Fatalf("unexpected width metadata: %#v", meta["width"])
+	}
+	if width != 6 {
+		t.Fatalf("expected layout metadata width=6, got %d", width)
+	}
+}
+
 func TestConfigureLayoutPropagatesLocale(t *testing.T) {
 	store := &fakeWidgetStore{
 		resolveAreaFn: func(input ResolveAreaInput) (ResolvedArea, error) {

@@ -8,9 +8,17 @@ import (
 func TestInMemoryPreferenceStore(t *testing.T) {
 	store := NewInMemoryPreferenceStore()
 	viewer := ViewerContext{UserID: "user-1", Locale: "en"}
-	overrides := LayoutOverrides{AreaOrder: map[string][]string{
-		"admin.dashboard.main": {"w2", "w1"},
-	}, HiddenWidgets: map[string]bool{"w3": true}}
+	overrides := LayoutOverrides{
+		AreaOrder: map[string][]string{
+			"admin.dashboard.main": {"w2", "w1"},
+		},
+		AreaRows: map[string][]LayoutRow{
+			"admin.dashboard.main": {
+				{Widgets: []WidgetSlot{{ID: "w2", Width: 6}, {ID: "w1", Width: 6}}},
+			},
+		},
+		HiddenWidgets: map[string]bool{"w3": true},
+	}
 	if err := store.SaveLayoutOverrides(context.Background(), viewer, overrides); err != nil {
 		t.Fatalf("SaveLayoutOverrides returned error: %v", err)
 	}
@@ -26,5 +34,8 @@ func TestInMemoryPreferenceStore(t *testing.T) {
 	}
 	if hidden := out.HiddenWidgets["w3"]; !hidden {
 		t.Fatalf("expected hidden widget persisted")
+	}
+	if rows := out.AreaRows["admin.dashboard.main"]; len(rows) == 0 || rows[0].Widgets[0].Width != 6 {
+		t.Fatalf("expected area rows preserved, got %#v", rows)
 	}
 }

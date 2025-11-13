@@ -87,6 +87,14 @@ func TestSaveLayoutPreferencesCommand(t *testing.T) {
 		AreaOrder: map[string][]string{
 			"admin.dashboard.main": {"w2", "w1"},
 		},
+		LayoutRows: map[string][]LayoutRowInput{
+			"admin.dashboard.main": {
+				{Widgets: []LayoutWidgetInput{
+					{ID: "w2", Width: 6},
+					{ID: "w1", Width: 6},
+				}},
+			},
+		},
 		HiddenWidgets: []string{"w3"},
 	}
 	if err := cmd.Execute(context.Background(), input); err != nil {
@@ -94,6 +102,10 @@ func TestSaveLayoutPreferencesCommand(t *testing.T) {
 	}
 	if service.savePrefCalls != 1 {
 		t.Fatalf("expected preferences save")
+	}
+	rows := service.lastOverrides.AreaRows["admin.dashboard.main"]
+	if len(rows) == 0 || len(rows[0].Widgets) != 2 || rows[0].Widgets[0].Width != 6 {
+		t.Fatalf("expected layout rows persisted, got %#v", rows)
 	}
 }
 
@@ -103,6 +115,7 @@ type stubService struct {
 	reorderCalls  int
 	refreshCalls  int
 	savePrefCalls int
+	lastOverrides dashboard.LayoutOverrides
 }
 
 func (s *stubService) AddWidget(context.Context, dashboard.AddWidgetRequest) error {
@@ -125,8 +138,9 @@ func (s *stubService) NotifyWidgetUpdated(context.Context, dashboard.WidgetEvent
 	return nil
 }
 
-func (s *stubService) SavePreferences(context.Context, dashboard.ViewerContext, dashboard.LayoutOverrides) error {
+func (s *stubService) SavePreferences(ctx context.Context, viewer dashboard.ViewerContext, overrides dashboard.LayoutOverrides) error {
 	s.savePrefCalls++
+	s.lastOverrides = overrides
 	return nil
 }
 
