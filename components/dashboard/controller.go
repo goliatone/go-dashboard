@@ -99,6 +99,7 @@ func (c *Controller) widgetsPayload(instances []WidgetInstance) []map[string]any
 			"config":     inst.Configuration,
 			"data":       data,
 			"area_code":  inst.AreaCode,
+			"metadata":   inst.Metadata,
 		})
 	}
 	return widgets
