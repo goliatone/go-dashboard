@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	router "github.com/goliatone/go-router"
 
@@ -176,10 +177,42 @@ func defaultViewerResolver(ctx router.Context) dashboard.ViewerContext {
 	if roles, ok := ctx.Locals("roles").([]string); ok {
 		viewer.Roles = roles
 	}
-	if locale, ok := ctx.Locals("locale").(string); ok {
-		viewer.Locale = locale
-	}
+	viewer.Locale = inferLocale(ctx)
 	return viewer
+}
+
+func inferLocale(ctx router.Context) string {
+	if locale, ok := ctx.Locals("locale").(string); ok && locale != "" {
+		return locale
+	}
+	if locale := strings.TrimSpace(ctx.Param("locale")); locale != "" {
+		return strings.ToLower(locale)
+	}
+	if locale := strings.TrimSpace(ctx.Query("locale")); locale != "" {
+		return strings.ToLower(locale)
+	}
+	if header := ctx.Header("Accept-Language"); header != "" {
+		if lang := parseAcceptLanguage(header); lang != "" {
+			return lang
+		}
+	}
+	return ""
+}
+
+func parseAcceptLanguage(header string) string {
+	for _, token := range strings.Split(header, ",") {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if idx := strings.Index(token, ";"); idx >= 0 {
+			token = token[:idx]
+		}
+		if token != "" {
+			return strings.ToLower(token)
+		}
+	}
+	return ""
 }
 
 func respondError(ctx router.Context, status int, err error) error {
