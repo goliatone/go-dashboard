@@ -19,9 +19,10 @@ func (fn ProviderFunc) Fetch(ctx context.Context, meta WidgetContext) (WidgetDat
 
 // WidgetContext contains the metadata needed by providers to calculate widget data.
 type WidgetContext struct {
-	Instance WidgetInstance
-	Viewer   ViewerContext
-	Options  map[string]any
+	Instance   WidgetInstance
+	Viewer     ViewerContext
+	Options    map[string]any
+	Translator TranslationService
 }
 
 // WidgetData is an opaque payload passed to templates.
