@@ -115,7 +115,19 @@ type ResolvedArea struct {
 type LayoutOverrides struct {
 	Locale        string
 	AreaOrder     map[string][]string
+	AreaRows      map[string][]LayoutRow
 	HiddenWidgets map[string]bool
+}
+
+// LayoutRow represents widgets that share the same row/line within an area.
+type LayoutRow struct {
+	Widgets []WidgetSlot `json:"widgets" yaml:"widgets"`
+}
+
+// WidgetSlot describes a widget placement + its width (1-12).
+type WidgetSlot struct {
+	ID    string `json:"id" yaml:"id"`
+	Width int    `json:"width,omitempty" yaml:"width,omitempty"`
 }
 
 // ViewerContext captures the active user/locale information needed to render dashboards.
