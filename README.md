@@ -130,6 +130,25 @@ generates manifest entries, JSON schemas, and provider stubs in one step:
 CI guardrails in Task 9.4 validate manifests for duplicates and schema issues so
 broken widget packs never land in `main`.
 
+## Localization
+
+go-dashboard now mirrors go-cms localization flows:
+
+- Router adapters (including go-router) propagate the locale discovered from URL
+  prefixes, query params, or `Accept-Language` into `ViewerContext.Locale`.
+- `dashboard.Options` accepts an optional `TranslationService`; the default
+  renderer wires it via `dashboard.WithTranslationHelpers`, exposing a `T`
+  function to templates (`{{ T("dashboard.widget.system_status.title", locale, "System Status") }}`).
+- Providers receive the same translator through `WidgetContext.Translator` so
+  server-side strings (quick action labels, system status names, etc.) can be
+  localized alongside data.
+- Widget definitions/manifests accept `name_localized` and
+  `description_localized` maps. Use `dashboard.ResolveLocalizedValue` to pick
+  the best translation with graceful fallback to the default string.
+- The sample app (`examples/goadmin`) demonstrates locale switching via
+  `?locale=es`, including localized quick actions, activity feed verbs, and
+  welcome messages without changing transport code.
+
 ## Development Workflow
 
 - `./taskfile dashboard:test` – run the focused dashboard test suite (same target used by CI).
