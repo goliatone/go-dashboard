@@ -23,6 +23,7 @@ func NewInMemoryPreferenceStore() *InMemoryPreferenceStore {
 func (s *InMemoryPreferenceStore) LayoutOverrides(_ context.Context, viewer ViewerContext) (LayoutOverrides, error) {
 	if viewer.UserID == "" {
 		return LayoutOverrides{
+			Locale:        viewer.Locale,
 			AreaOrder:     map[string][]string{},
 			HiddenWidgets: map[string]bool{},
 		}, nil
@@ -31,9 +32,13 @@ func (s *InMemoryPreferenceStore) LayoutOverrides(_ context.Context, viewer View
 	defer s.mu.RUnlock()
 	if overrides, ok := s.data[s.key(viewer)]; ok {
 		s.normalize(&overrides)
+		if overrides.Locale == "" {
+			overrides.Locale = viewer.Locale
+		}
 		return overrides, nil
 	}
 	return LayoutOverrides{
+		Locale:        viewer.Locale,
 		AreaOrder:     map[string][]string{},
 		HiddenWidgets: map[string]bool{},
 	}, nil
@@ -43,6 +48,9 @@ func (s *InMemoryPreferenceStore) LayoutOverrides(_ context.Context, viewer View
 func (s *InMemoryPreferenceStore) SaveLayoutOverrides(_ context.Context, viewer ViewerContext, overrides LayoutOverrides) error {
 	if viewer.UserID == "" {
 		return fmt.Errorf("preference store requires viewer user id")
+	}
+	if overrides.Locale == "" {
+		overrides.Locale = viewer.Locale
 	}
 	s.normalize(&overrides)
 	s.mu.Lock()
