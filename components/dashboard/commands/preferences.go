@@ -10,9 +10,19 @@ import (
 
 // SaveLayoutPreferencesInput captures viewer overrides for layout customization.
 type SaveLayoutPreferencesInput struct {
-	Viewer        dashboard.ViewerContext `json:"viewer"`
-	AreaOrder     map[string][]string     `json:"area_order"`
-	HiddenWidgets []string                `json:"hidden_widget_ids"`
+	Viewer        dashboard.ViewerContext     `json:"viewer"`
+	AreaOrder     map[string][]string         `json:"area_order"`
+	LayoutRows    map[string][]LayoutRowInput `json:"layout_rows"`
+	HiddenWidgets []string                    `json:"hidden_widget_ids"`
+}
+
+type LayoutRowInput struct {
+	Widgets []LayoutWidgetInput `json:"widgets"`
+}
+
+type LayoutWidgetInput struct {
+	ID    string `json:"id"`
+	Width int    `json:"width"`
 }
 
 type preferenceService interface {
@@ -42,6 +52,7 @@ func (c *SaveLayoutPreferencesCommand) Execute(ctx context.Context, msg SaveLayo
 	}
 	overrides := dashboard.LayoutOverrides{
 		AreaOrder:     msg.AreaOrder,
+		AreaRows:      convertLayoutRows(msg.LayoutRows),
 		HiddenWidgets: make(map[string]bool, len(msg.HiddenWidgets)),
 	}
 	for _, id := range msg.HiddenWidgets {
@@ -56,4 +67,37 @@ func (c *SaveLayoutPreferencesCommand) Execute(ctx context.Context, msg SaveLayo
 		"hidden_cnt": len(msg.HiddenWidgets),
 	})
 	return nil
+}
+
+func convertLayoutRows(input map[string][]LayoutRowInput) map[string][]dashboard.LayoutRow {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string][]dashboard.LayoutRow, len(input))
+	for area, rows := range input {
+		mapped := make([]dashboard.LayoutRow, 0, len(rows))
+		for _, row := range rows {
+			if len(row.Widgets) == 0 {
+				continue
+			}
+			slots := make([]dashboard.WidgetSlot, 0, len(row.Widgets))
+			for _, widget := range row.Widgets {
+				if widget.ID == "" {
+					continue
+				}
+				slots = append(slots, dashboard.WidgetSlot{
+					ID:    widget.ID,
+					Width: widget.Width,
+				})
+			}
+			if len(slots) == 0 {
+				continue
+			}
+			mapped = append(mapped, dashboard.LayoutRow{Widgets: slots})
+		}
+		if len(mapped) > 0 {
+			output[area] = mapped
+		}
+	}
+	return output
 }
