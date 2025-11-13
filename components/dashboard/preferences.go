@@ -25,6 +25,7 @@ func (s *InMemoryPreferenceStore) LayoutOverrides(_ context.Context, viewer View
 		return LayoutOverrides{
 			Locale:        viewer.Locale,
 			AreaOrder:     map[string][]string{},
+			AreaRows:      map[string][]LayoutRow{},
 			HiddenWidgets: map[string]bool{},
 		}, nil
 	}
@@ -40,6 +41,7 @@ func (s *InMemoryPreferenceStore) LayoutOverrides(_ context.Context, viewer View
 	return LayoutOverrides{
 		Locale:        viewer.Locale,
 		AreaOrder:     map[string][]string{},
+		AreaRows:      map[string][]LayoutRow{},
 		HiddenWidgets: map[string]bool{},
 	}, nil
 }
@@ -70,7 +72,28 @@ func (s *InMemoryPreferenceStore) normalize(overrides *LayoutOverrides) {
 	if overrides.AreaOrder == nil {
 		overrides.AreaOrder = map[string][]string{}
 	}
+	if overrides.AreaRows == nil {
+		overrides.AreaRows = map[string][]LayoutRow{}
+	}
 	if overrides.HiddenWidgets == nil {
 		overrides.HiddenWidgets = map[string]bool{}
+	}
+	clampAreaRows(overrides.AreaRows)
+}
+
+func clampAreaRows(rows map[string][]LayoutRow) {
+	for area, list := range rows {
+		for rowIdx, row := range list {
+			for slotIdx, slot := range row.Widgets {
+				if slot.Width <= 0 || slot.Width > 12 {
+					if slot.Width <= 0 {
+						slot.Width = 12
+					} else if slot.Width > 12 {
+						slot.Width = 12
+					}
+					rows[area][rowIdx].Widgets[slotIdx] = slot
+				}
+			}
+		}
 	}
 }
