@@ -24,10 +24,95 @@ import (
 	"github.com/goliatone/go-dashboard/pkg/goadmin"
 )
 
+const sampleViewerID = "admin@example.com"
+
+type demoTranslationService struct {
+	entries map[string]map[string]string
+}
+
+func newDemoTranslationService() *demoTranslationService {
+	return &demoTranslationService{
+		entries: map[string]map[string]string{
+			"dashboard.page.title":                   {"es": "Panel de control"},
+			"dashboard.page.description":             {"es": "Resumen administrativo"},
+			"dashboard.widget.user_stats.data_title": {"es": "Usuarios"},
+			"dashboard.widget.quick_actions.invite_user": {
+				"es": "Invitar usuario",
+			},
+			"dashboard.widget.quick_actions.create_page": {
+				"es": "Crear página",
+			},
+			"dashboard.widget.system_status.database": {"es": "Base de datos"},
+			"dashboard.widget.system_status.cache":    {"es": "Caché"},
+			"dashboard.widget.system_status.worker":   {"es": "Trabajador"},
+			"dashboard.widget.sales_chart.title":      {"es": "Ventas"},
+			"dashboard.widget.alert_trends.title":     {"es": "Tendencias de alertas"},
+			"dashboard.widget.alert_trends.service_all": {
+				"es": "Todos los servicios",
+			},
+			"dashboard.widget.alert_trends.lookback_prefix": {"es": "Últimos"},
+			"dashboard.widget.alert_trends.lookback_suffix": {"es": "días"},
+			"demo.widget.user_stats.title":                  {"es": "Salud de la cuenta"},
+			"demo.activity.published_pricing":               {"es": "publicó la actualización de precios de primavera"},
+			"demo.activity.invited_seats":                   {"es": "invitó 24 licencias empresariales"},
+			"demo.activity.resolved_invoices":               {"es": "resolvió 14 facturas pendientes"},
+			"demo.activity.shipped_theme":                   {"es": "envió un cambio de tema"},
+			"demo.activity.closed_incident":                 {"es": "cerró el incidente #782"},
+			"demo.quick_action.invite.label":                {"es": "Invitar equipo de ventas"},
+			"demo.quick_action.invite.description":          {"es": "Importa cuentas SDR"},
+			"demo.quick_action.plan.label":                  {"es": "Simulador de planes"},
+			"demo.quick_action.plan.description":            {"es": "Estima el impacto ARR"},
+			"demo.quick_action.status.label":                {"es": "Agregar actualización de estado"},
+			"demo.quick_action.status.description":          {"es": "Publicar en StatusPage"},
+			"demo.quick_action.automation.label":            {"es": "Crear automatización"},
+			"demo.quick_action.automation.description":      {"es": "Conecta alertas a Zendesk"},
+			"demo.status.checkout":                          {"es": "API de cobro"},
+			"demo.status.billing":                           {"es": "Procesos de facturación"},
+			"demo.status.notifications":                     {"es": "Notificaciones"},
+			"demo.status.sync":                              {"es": "Sincronización en segundo plano"},
+			"demo.time.just_now":                            {"es": "justo ahora"},
+			"demo.time.minutes_suffix":                      {"es": "m"},
+			"demo.time.hours_suffix":                        {"es": "h"},
+			"demo.time.days_suffix":                         {"es": "d"},
+			"demo.widget.welcome.headline":                  {"es": "Hola 👋"},
+			"demo.widget.welcome.message":                   {"es": "Las operaciones se ven estables. Usa este espacio para notas o recordatorios."},
+		},
+	}
+}
+
+func (d *demoTranslationService) Translate(_ context.Context, key, locale string, _ map[string]any) (string, error) {
+	if d == nil {
+		return "", nil
+	}
+	locale = strings.ToLower(strings.TrimSpace(locale))
+	values, ok := d.entries[key]
+	if !ok {
+		return "", nil
+	}
+	if locale == "" {
+		locale = "en"
+	}
+	if value, ok := values[locale]; ok && value != "" {
+		return value, nil
+	}
+	if idx := strings.Index(locale, "-"); idx > 0 {
+		if value, ok := values[locale[:idx]]; ok && value != "" {
+			return value, nil
+		}
+	}
+	if value, ok := values["default"]; ok {
+		return value, nil
+	}
+	return "", nil
+}
+
+var _ dashboard.TranslationService = (*demoTranslationService)(nil)
+
 func main() {
 	ctx := context.Background()
 
-	service, registry, store := setupDemoDashboard(ctx)
+	translator := newDemoTranslationService()
+	service, registry, store := setupDemoDashboard(ctx, translator)
 
 	renderer := newSampleRenderer()
 	controller := dashboard.NewController(dashboard.ControllerOptions{
@@ -53,7 +138,13 @@ func main() {
 		API:        executor,
 		Broadcast:  hook,
 		ViewerResolver: func(ctx router.Context) dashboard.ViewerContext {
-			return dashboard.ViewerContext{UserID: "admin@example.com", Roles: []string{"admin"}, Locale: "en"}
+			viewer := dashboard.ViewerContext{UserID: sampleViewerID, Roles: []string{"admin"}, Locale: "en"}
+			if locale := ctx.Query("locale"); locale != "" {
+				viewer.Locale = locale
+			} else if header := ctx.Header("Accept-Language"); header != "" {
+				viewer.Locale = strings.ToLower(strings.TrimSpace(strings.Split(header, ",")[0]))
+			}
+			return viewer
 		},
 	}); err != nil {
 		log.Fatalf("register routes: %v", err)
@@ -64,6 +155,7 @@ func main() {
 		Service: dashboardpkg.NewService(dashboard.Options{
 			WidgetStore: store,
 			Providers:   registry,
+			Translation: translator,
 		}),
 		MenuBuilder: &loggingMenuBuilder{},
 	})
@@ -75,6 +167,7 @@ func main() {
 	}
 
 	log.Printf("dashboard routes ready: http://localhost:8080/admin/dashboard")
+	log.Printf("Try locale switching via http://localhost:9876/admin/dashboard?locale=es")
 	log.Printf("API endpoints: POST %s, DELETE %s, WebSocket %s",
 		"/admin/dashboard/widgets",
 		"/admin/dashboard/widgets/:id",
@@ -207,6 +300,7 @@ func newSampleRenderer() sampleRenderer {
 	tmpl := template.Must(template.New("dashboard").Funcs(template.FuncMap{
 		"isType":      func(definition, code string) bool { return definition == code },
 		"widgetTitle": widgetTitle,
+		"widgetSpan":  widgetSpanMeta,
 		"add":         func(a, b int) int { return a + b },
 		"formatNumber": func(value any) string {
 			return formatNumber(value)
@@ -272,7 +366,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	providers := map[string]dashboard.Provider{
 		"admin.widget.user_stats": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 			return dashboard.WidgetData{
-				"title": "Account Health",
+				"title": translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.user_stats.title", "Account Health"),
 				"values": map[string]any{
 					"total":  16804,
 					"active": 12034,
@@ -282,17 +376,17 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 		}),
 		"admin.widget.recent_activity": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 			return dashboard.WidgetData{
-				"items": demoActivityFeed(time.Now()),
+				"items": demoActivityFeed(ctx, time.Now(), meta.Translator, meta.Viewer.Locale),
 			}, nil
 		}),
-		"admin.widget.quick_actions": dashboard.ProviderFunc(func(context.Context, dashboard.WidgetContext) (dashboard.WidgetData, error) {
+		"admin.widget.quick_actions": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 			return dashboard.WidgetData{
-				"actions": demoQuickActions(),
+				"actions": demoQuickActions(ctx, meta.Translator, meta.Viewer.Locale),
 			}, nil
 		}),
-		"admin.widget.system_status": dashboard.ProviderFunc(func(context.Context, dashboard.WidgetContext) (dashboard.WidgetData, error) {
+		"admin.widget.system_status": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 			return dashboard.WidgetData{
-				"checks": demoStatusChecks(),
+				"checks": demoStatusChecks(ctx, meta.Translator, meta.Viewer.Locale),
 			}, nil
 		}),
 	}
@@ -304,7 +398,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
-func setupDemoDashboard(ctx context.Context) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
+func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
 
@@ -314,23 +408,51 @@ func setupDemoDashboard(ctx context.Context) (*dashboard.Service, *dashboard.Reg
 		Description: "Greets the signed-in administrator.",
 		Category:    "demo",
 		Schema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"message": map[string]any{"type": "string"}},
+			"type": "object",
+			"properties": map[string]any{
+				"message": map[string]any{
+					"oneOf": []map[string]any{
+						{"type": "string"},
+						{
+							"type":                 "object",
+							"additionalProperties": map[string]any{"type": "string"},
+						},
+					},
+				},
+			},
 		},
 	}
 	_, _ = store.EnsureDefinition(ctx, customDefinition)
 	_ = registry.RegisterDefinition(customDefinition)
 	_ = registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+		configMessage := meta.Instance.Configuration["message"]
+		messageMap := toStringMap(configMessage)
+		fallback := translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.message", "Operations look steady. Use this space for runbook snippets or rotating notices.")
+		defaultMessage := fallback
+		if raw, ok := configMessage.(string); ok && raw != "" {
+			defaultMessage = raw
+		}
+		message := defaultMessage
+		if len(messageMap) > 0 {
+			if defaultMessage == "" {
+				defaultMessage = fallback
+			}
+			message = dashboard.ResolveLocalizedValue(messageMap, meta.Viewer.Locale, defaultMessage)
+		} else if message == "" {
+			message = fallback
+		}
 		return dashboard.WidgetData{
-			"headline": fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID),
-			"message":  meta.Instance.Configuration["message"],
+			"headline": translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.headline", fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID)),
+			"message":  message,
 		}, nil
 	}))
 
 	service := dashboard.NewService(dashboard.Options{
 		WidgetStore: store,
 		Providers:   registry,
+		Translation: translator,
 	})
+	defaultViewer := dashboard.ViewerContext{UserID: sampleViewerID, Locale: "en"}
 
 	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
 	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: false}); err != nil {
@@ -359,7 +481,10 @@ func setupDemoDashboard(ctx context.Context) (*dashboard.Service, *dashboard.Reg
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(1),
 		Configuration: map[string]any{
-			"message": "Operations look steady. Use this space for runbook snippets or rotating notices.",
+			"message": map[string]any{
+				"en": "Operations look steady. Use this space for runbook snippets or rotating notices.",
+				"es": "Las operaciones se ven estables. Usa este espacio para notas o recordatorios.",
+			},
 		},
 	})
 	addWidgetOrDie(ctx, service, "user stats", dashboard.AddWidgetRequest{
@@ -408,65 +533,132 @@ func setupDemoDashboard(ctx context.Context) (*dashboard.Service, *dashboard.Reg
 			"service":       "Checkout API",
 		},
 	})
+	seedDefaultLayout(ctx, service, defaultViewer)
 	return service, registry, store
 }
 
-func demoActivityFeed(now time.Time) []map[string]any {
+func demoActivityFeed(ctx context.Context, now time.Time, translator dashboard.TranslationService, locale string) []map[string]any {
 	entries := []struct {
-		User    string
-		Action  string
-		Context string
-		When    time.Duration
+		User          string
+		ActionKey     string
+		ActionDefault string
+		Context       string
+		When          time.Duration
 	}{
-		{"Candice Reed", "published the spring pricing update", "Billing · Plan v3 rollout", 5 * time.Minute},
-		{"Noah Patel", "invited 24 enterprise seats", "Acme Industrial — Enterprise", 22 * time.Minute},
-		{"Marcos Valle", "resolved 14 aging invoices", "Finance · Treasury automation", 49 * time.Minute},
-		{"Sara Ndlovu", "shipped a dashboard theme change", "Design System · Canary env", 2 * time.Hour},
-		{"Elena Ibarra", "closed incident #782", "Checkout API · On-call", 6 * time.Hour},
+		{"Candice Reed", "demo.activity.published_pricing", "published the spring pricing update", "Billing · Plan v3 rollout", 5 * time.Minute},
+		{"Noah Patel", "demo.activity.invited_seats", "invited 24 enterprise seats", "Acme Industrial — Enterprise", 22 * time.Minute},
+		{"Marcos Valle", "demo.activity.resolved_invoices", "resolved 14 aging invoices", "Finance · Treasury automation", 49 * time.Minute},
+		{"Sara Ndlovu", "demo.activity.shipped_theme", "shipped a dashboard theme change", "Design System · Canary env", 2 * time.Hour},
+		{"Elena Ibarra", "demo.activity.closed_incident", "closed incident #782", "Checkout API · On-call", 6 * time.Hour},
 	}
 	items := make([]map[string]any, 0, len(entries))
 	for _, entry := range entries {
 		items = append(items, map[string]any{
 			"user":   entry.User,
-			"action": entry.Action,
-			"ago":    formatAgo(now.Add(-entry.When)),
+			"action": translateOrDefault(ctx, translator, locale, entry.ActionKey, entry.ActionDefault),
+			"ago":    formatAgo(ctx, translator, now.Add(-entry.When), locale),
 			"detail": entry.Context,
 		})
 	}
 	return items
 }
 
-func demoQuickActions() []map[string]any {
-	return []map[string]any{
-		{"label": "Invite sales team", "route": "/admin/users/invite", "description": "Bulk import SDR seats", "icon": "users"},
-		{"label": "Plan change simulator", "route": "/admin/billing/simulator", "description": "Estimate ARR impact", "icon": "activity"},
-		{"label": "Add status update", "route": "/admin/incidents/new", "description": "Publish to StatusPage", "icon": "alert-circle"},
-		{"label": "Create automation", "route": "/admin/workflows/new", "description": "Connect alerts to Zendesk", "icon": "zap"},
+func demoQuickActions(ctx context.Context, translator dashboard.TranslationService, locale string) []map[string]any {
+	type action struct {
+		LabelKey      string
+		LabelFallback string
+		DescKey       string
+		DescFallback  string
+		Route         string
+		Icon          string
+	}
+	actions := []action{
+		{"demo.quick_action.invite.label", "Invite sales team", "demo.quick_action.invite.description", "Bulk import SDR seats", "/admin/users/invite", "users"},
+		{"demo.quick_action.plan.label", "Plan change simulator", "demo.quick_action.plan.description", "Estimate ARR impact", "/admin/billing/simulator", "activity"},
+		{"demo.quick_action.status.label", "Add status update", "demo.quick_action.status.description", "Publish to StatusPage", "/admin/incidents/new", "alert-circle"},
+		{"demo.quick_action.automation.label", "Create automation", "demo.quick_action.automation.description", "Connect alerts to Zendesk", "/admin/workflows/new", "zap"},
+	}
+	items := make([]map[string]any, 0, len(actions))
+	for _, act := range actions {
+		items = append(items, map[string]any{
+			"label":       translateOrDefault(ctx, translator, locale, act.LabelKey, act.LabelFallback),
+			"description": translateOrDefault(ctx, translator, locale, act.DescKey, act.DescFallback),
+			"route":       act.Route,
+			"icon":        act.Icon,
+		})
+	}
+	return items
+}
+
+func demoStatusChecks(ctx context.Context, translator dashboard.TranslationService, locale string) []map[string]any {
+	checks := []struct {
+		Key      string
+		Fallback string
+		Status   string
+	}{
+		{"demo.status.checkout", "Checkout API", "healthy"},
+		{"demo.status.billing", "Billing jobs", "degraded"},
+		{"demo.status.notifications", "Notifications", "healthy"},
+		{"demo.status.sync", "Background sync", "investigating"},
+	}
+	items := make([]map[string]any, 0, len(checks))
+	for _, check := range checks {
+		items = append(items, map[string]any{
+			"name":   translateOrDefault(ctx, translator, locale, check.Key, check.Fallback),
+			"status": check.Status,
+		})
+	}
+	return items
+}
+
+func seedDefaultLayout(ctx context.Context, svc *dashboard.Service, viewer dashboard.ViewerContext) {
+	layout, err := svc.ConfigureLayout(ctx, viewer)
+	if err != nil {
+		return
+	}
+	mainArea := layout.Areas["admin.dashboard.main"]
+	funnelID := widgetIDByDefinition(mainArea, "admin.widget.analytics_funnel")
+	cohortID := widgetIDByDefinition(mainArea, "admin.widget.cohort_overview")
+	if funnelID == "" || cohortID == "" {
+		return
+	}
+	overrides := dashboard.LayoutOverrides{
+		AreaRows: map[string][]dashboard.LayoutRow{
+			"admin.dashboard.main": {
+				{Widgets: []dashboard.WidgetSlot{
+					{ID: funnelID, Width: 6},
+					{ID: cohortID, Width: 6},
+				}},
+			},
+		},
+	}
+	if err := svc.SavePreferences(ctx, viewer, overrides); err != nil {
+		log.Printf("seed layout overrides: %v", err)
 	}
 }
 
-func demoStatusChecks() []map[string]any {
-	return []map[string]any{
-		{"name": "Checkout API", "status": "healthy"},
-		{"name": "Billing jobs", "status": "degraded"},
-		{"name": "Notifications", "status": "healthy"},
-		{"name": "Background sync", "status": "investigating"},
+func widgetIDByDefinition(widgets []dashboard.WidgetInstance, definition string) string {
+	for _, w := range widgets {
+		if w.DefinitionID == definition {
+			return w.ID
+		}
 	}
+	return ""
 }
 
-func formatAgo(ts time.Time) string {
+func formatAgo(ctx context.Context, translator dashboard.TranslationService, ts time.Time, locale string) string {
 	diff := time.Since(ts)
 	if diff < time.Minute {
-		return "just now"
+		return translateOrDefault(ctx, translator, locale, "demo.time.just_now", "just now")
 	}
 	if diff < time.Hour {
-		return fmt.Sprintf("%dm", int(diff.Minutes()))
+		return fmt.Sprintf("%d%s", int(diff.Minutes()), translateOrDefault(ctx, translator, locale, "demo.time.minutes_suffix", "m"))
 	}
 	if diff < 24*time.Hour {
-		return fmt.Sprintf("%dh", int(diff.Hours()))
+		return fmt.Sprintf("%d%s", int(diff.Hours()), translateOrDefault(ctx, translator, locale, "demo.time.hours_suffix", "h"))
 	}
 	days := int(diff.Hours()) / 24
-	return fmt.Sprintf("%dd", days)
+	return fmt.Sprintf("%d%s", days, translateOrDefault(ctx, translator, locale, "demo.time.days_suffix", "d"))
 }
 
 func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
@@ -500,6 +692,7 @@ type widgetView struct {
 	Definition string
 	Config     map[string]any
 	Data       map[string]any
+	Metadata   map[string]any
 }
 
 func toDashboardView(data any) dashboardView {
@@ -536,6 +729,7 @@ func buildAreaView(areaRaw map[string]any, fallback string) areaView {
 		} else if widgetMap["data"] != nil {
 			widget.Data = map[string]any{"value": widgetMap["data"]}
 		}
+		widget.Metadata = toAnyMap(widgetMap["metadata"])
 		area.Widgets = append(area.Widgets, widget)
 	}
 	return area
@@ -631,6 +825,16 @@ func toWidgetMaps(raw any) []map[string]any {
 	return nil
 }
 
+func toAnyMap(value any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	return nil
+}
+
 func stringOrDefault(value any, fallback string) string {
 	if s, ok := value.(string); ok && s != "" {
 		return s
@@ -671,6 +875,71 @@ func widgetTitle(def string) string {
 	default:
 		return def
 	}
+}
+
+func widgetSpanMeta(meta map[string]any) int {
+	if meta == nil {
+		return 12
+	}
+	layout, ok := meta["layout"].(map[string]any)
+	if !ok {
+		return 12
+	}
+	if width, ok := layout["width"]; ok {
+		if val, ok := intFromAny(width); ok {
+			return clampSpan(val)
+		}
+	}
+	if cols, ok := layout["columns"]; ok {
+		if val, ok := intFromAny(cols); ok {
+			return clampSpan(val)
+		}
+	}
+	return 12
+}
+
+func intFromAny(value any) (int, bool) {
+	switch v := value.(type) {
+	case int:
+		return v, true
+	case int8:
+		return int(v), true
+	case int16:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case int64:
+		return int(v), true
+	case uint:
+		return int(v), true
+	case uint8:
+		return int(v), true
+	case uint16:
+		return int(v), true
+	case uint32:
+		return int(v), true
+	case uint64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case float64:
+		return int(v), true
+	case string:
+		if parsed, err := strconv.Atoi(v); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func clampSpan(width int) int {
+	if width < 1 {
+		return 1
+	}
+	if width > 12 {
+		return 12
+	}
+	return width
 }
 
 func formatNumber(value any) string {
@@ -715,6 +984,40 @@ func formatInt64(n int64) string {
 		builder.WriteString(s[i : i+3])
 	}
 	return builder.String()
+}
+
+func translateOrDefault(ctx context.Context, svc dashboard.TranslationService, locale, key, fallback string) string {
+	if svc == nil {
+		return fallback
+	}
+	value, err := svc.Translate(ctx, key, locale, nil)
+	if err != nil || value == "" {
+		return fallback
+	}
+	return value
+}
+
+func toStringMap(input any) map[string]string {
+	switch value := input.(type) {
+	case map[string]string:
+		if len(value) == 0 {
+			return nil
+		}
+		return value
+	case map[string]any:
+		out := make(map[string]string, len(value))
+		for k, v := range value {
+			if str, ok := v.(string); ok && str != "" {
+				out[k] = str
+			}
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func percentValue(value any) string {
@@ -859,6 +1162,20 @@ const dashboardTemplate = `<!DOCTYPE html>
         letter-spacing: 0.08em;
         color: #94a3b8;
       }
+      .widgets-grid {
+        display: grid;
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+      .widgets-grid .widget {
+        margin-top: 0;
+        grid-column: span var(--span, 12);
+      }
+      .area-empty {
+        grid-column: 1 / -1;
+        color: #94a3b8;
+      }
       .widget {
         border: 1px solid #e2e8f0;
         border-radius: 12px;
@@ -984,6 +1301,10 @@ const dashboardTemplate = `<!DOCTYPE html>
         cursor: pointer;
         font-size: 0.75rem;
       }
+      .widget__toolbar button[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
       .funnel-callout {
         display: flex;
         align-items: center;
@@ -1033,26 +1354,26 @@ const dashboardTemplate = `<!DOCTYPE html>
     <div class="dashboard" id="dashboard">
       {{ range $idx, $area := .Areas }}
         {{ if eq $area.Code "admin.dashboard.main" }}
-          <section class="area area-main" data-area="{{ $area.Code }}">
+          <section class="area area-main" data-area-code="{{ $area.Code }}">
             <h2>Main</h2>
-            {{ template "widgets" $area.Widgets }}
+            {{ template "widgets" $area }}
           </section>
         {{ else if eq $area.Code "admin.dashboard.sidebar" }}
-          <section class="area area-sidebar" data-area="{{ $area.Code }}">
+          <section class="area area-sidebar" data-area-code="{{ $area.Code }}">
             <h2>Sidebar</h2>
-            {{ template "widgets" $area.Widgets }}
+            {{ template "widgets" $area }}
           </section>
         {{ else if eq $area.Code "admin.dashboard.footer" }}
-          <section class="area area-footer" data-area="{{ $area.Code }}">
+          <section class="area area-footer" data-area-code="{{ $area.Code }}">
             <h2>Operations</h2>
-            {{ template "widgets" $area.Widgets }}
+            {{ template "widgets" $area }}
           </section>
         {{ end }}
       {{ end }}
     </div>
     <script>
       (function () {
-        const areas = document.querySelectorAll("[data-area]");
+        const grids = document.querySelectorAll("[data-area-grid]");
         const status = document.getElementById("save-status");
         let dragged = null;
 
@@ -1067,7 +1388,7 @@ const dashboardTemplate = `<!DOCTYPE html>
           });
         });
 
-        areas.forEach(area => {
+        grids.forEach(area => {
           area.addEventListener("dragover", event => {
             event.preventDefault();
             const after = getDragAfterElement(area, event.clientY);
@@ -1092,6 +1413,20 @@ const dashboardTemplate = `<!DOCTYPE html>
           });
         });
 
+        document.querySelectorAll(".resize-widget").forEach(btn => {
+          const widget = btn.closest(".widget");
+          if (btn.disabled || !widget || widget.dataset.resizable !== "true") {
+            return;
+          }
+          btn.addEventListener("click", () => {
+            const current = parseInt(widget.dataset.span || "12", 10);
+            const next = current === 12 ? 6 : 12;
+            widget.dataset.span = next;
+            widget.style.setProperty("--span", next);
+            saveLayout();
+          });
+        });
+
         function getDragAfterElement(container, y) {
           const elements = [...container.querySelectorAll(".widget:not(.dragging)")];
           return elements.reduce((closest, child) => {
@@ -1107,10 +1442,12 @@ const dashboardTemplate = `<!DOCTYPE html>
 
         let saveTimer;
         function saveLayout() {
-          const payload = { area_order: {}, hidden_widget_ids: [] };
-          document.querySelectorAll("[data-area]").forEach(area => {
-            const code = area.getAttribute("data-area");
-            payload.area_order[code] = Array.from(area.querySelectorAll(".widget:not(.is-hidden)")).map(w => w.getAttribute("data-widget"));
+          const payload = { area_order: {}, hidden_widget_ids: [], layout_rows: {} };
+          grids.forEach(area => {
+            const code = area.getAttribute("data-area-grid");
+            const visibleWidgets = Array.from(area.querySelectorAll(".widget:not(.is-hidden)"));
+            payload.area_order[code] = visibleWidgets.map(w => w.getAttribute("data-widget"));
+            payload.layout_rows[code] = serializeRows(visibleWidgets);
           });
           document.querySelectorAll(".widget.is-hidden").forEach(widget => {
             payload.hidden_widget_ids.push(widget.getAttribute("data-widget"));
@@ -1133,105 +1470,138 @@ const dashboardTemplate = `<!DOCTYPE html>
               });
           }, 200);
         }
+
+        function serializeRows(widgets) {
+          const rows = [];
+          let current = [];
+          let total = 0;
+          widgets.forEach(widget => {
+            const span = parseInt(widget.dataset.span || "12", 10);
+            if (total + span > 12 && total > 0) {
+              rows.push({ widgets: current });
+              current = [];
+              total = 0;
+            }
+            current.push({ id: widget.getAttribute("data-widget"), width: span });
+            total += span;
+            if (total >= 12) {
+              rows.push({ widgets: current });
+              current = [];
+              total = 0;
+            }
+          });
+          if (current.length) {
+            rows.push({ widgets: current });
+          }
+          return rows;
+        }
       })();
     </script>
   </body>
 </html>
 
 {{ define "widgets" }}
-  {{ range . }}
-    <article class="widget" data-widget="{{ .ID }}">
-      <div class="widget__toolbar">
-        <button type="button" class="hide-widget">Toggle Hide</button>
-      </div>
-      <h3>{{ widgetTitle .Definition }}</h3>
-      {{ if isType .Definition "admin.widget.user_stats" }}
-        <div class="metrics">
-          {{ range $key, $value := index .Data "values" }}
-            <div class="metric">
-              <small>{{ $key }}</small>
-              <span>{{ formatNumber $value }}</span>
-            </div>
-          {{ end }}
-        </div>
-      {{ else if isType .Definition "admin.widget.recent_activity" }}
-        <ul class="activity">
-          {{ range $item := index .Data "items" }}
-            <li>
-              <strong>{{ index $item "user" }}</strong> {{ index $item "action" }} · {{ index $item "ago" }}
-              {{ if index $item "detail" }}<small>{{ index $item "detail" }}</small>{{ end }}
-            </li>
-          {{ end }}
-        </ul>
-      {{ else if isType .Definition "admin.widget.quick_actions" }}
-        <div class="actions">
-          {{ range $action := index .Data "actions" }}
-            <a href="{{ index $action "route" }}">
-              <strong>{{ index $action "label" }}</strong>
-              {{ if index $action "description" }}<small>{{ index $action "description" }}</small>{{ end }}
-            </a>
-          {{ end }}
-        </div>
-      {{ else if isType .Definition "admin.widget.system_status" }}
-        <ul class="status">
-          {{ range $check := index .Data "checks" }}
-            <li>
-              <span>{{ index $check "name" }}</span>
-              <strong class="status-badge {{ statusClass (index $check "status") }}">{{ index $check "status" }}</strong>
-            </li>
-          {{ end }}
-        </ul>
-      {{ else if isType .Definition "admin.widget.analytics_funnel" }}
-        {{ $conversion := percent (index .Data "conversion_rate") }}
-        {{ $goal := percent (valueOr (index .Data "goal") (index .Config "goal")) }}
-        <div class="funnel-callout">
-          <div>
-            <strong>{{ $conversion }}</strong>
-            <span>conversion</span>
+  {{ $areaCode := .Code }}
+  {{ $resizable := or (eq $areaCode "admin.dashboard.main") (eq $areaCode "admin.dashboard.footer") }}
+  <div class="widgets-grid" data-area-grid="{{ $areaCode }}">
+    {{ if .Widgets }}
+      {{ range .Widgets }}
+        {{ $span := widgetSpan .Metadata }}
+        <article class="widget" data-widget="{{ .ID }}" data-span="{{ $span }}" data-area-code="{{ $areaCode }}" data-resizable="{{ $resizable }}" style="--span: {{ $span }}">
+          <div class="widget__toolbar">
+            <button type="button" class="hide-widget">Toggle Hide</button>
+            <button type="button" class="resize-widget" {{ if not $resizable }}disabled title="Resize only available in Main or Operations"{{ end }}>Half Width</button>
           </div>
-          <span class="goal-pill">Goal {{ $goal }}</span>
-        </div>
-        <ul class="activity">
-          {{ range $step := index .Data "steps" }}
-            <li>
-              <strong>{{ index $step "label" }}</strong>
-              {{ formatNumber (index $step "value") }} · {{ printf "%.1f%%" (index $step "percent") }} of entry
-            </li>
-          {{ end }}
-        </ul>
-      {{ else if isType .Definition "admin.widget.cohort_overview" }}
-        <ul class="activity">
-          {{ range $row := index .Data "rows" }}
-            <li>
-              <strong>{{ index $row "label" }}</strong> — {{ index $row "size" }} signups
-              <div>
-                {{ range $idx, $rate := index $row "retention" }}
-                  <span style="margin-right:0.75rem;">P{{ add $idx 1 }} {{ printf "%.0f%%" $rate }}</span>
-                {{ end }}
-              </div>
-            </li>
-          {{ end }}
-        </ul>
-      {{ else if isType .Definition "admin.widget.alert_trends" }}
-        <ul class="activity">
-          {{ range $bucket := index .Data "series" }}
-            <li>
-              <strong>{{ index $bucket "day" }}</strong>
-              {{ range $row := index $bucket "counts" }}
-                <span style="margin-left:0.5rem;">{{ index $row "severity" }}: {{ index $row "count" }}</span>
+          <h3>{{ widgetTitle .Definition }}</h3>
+          {{ if isType .Definition "admin.widget.user_stats" }}
+            <div class="metrics">
+              {{ range $key, $value := index .Data "values" }}
+                <div class="metric">
+                  <small>{{ $key }}</small>
+                  <span>{{ formatNumber $value }}</span>
+                </div>
               {{ end }}
-            </li>
+            </div>
+          {{ else if isType .Definition "admin.widget.recent_activity" }}
+            <ul class="activity">
+              {{ range $item := index .Data "items" }}
+                <li>
+                  <strong>{{ index $item "user" }}</strong> {{ index $item "action" }} · {{ index $item "ago" }}
+                  {{ if index $item "detail" }}<small>{{ index $item "detail" }}</small>{{ end }}
+                </li>
+              {{ end }}
+            </ul>
+          {{ else if isType .Definition "admin.widget.quick_actions" }}
+            <div class="actions">
+              {{ range $action := index .Data "actions" }}
+                <a href="{{ index $action "route" }}">
+                  <strong>{{ index $action "label" }}</strong>
+                  {{ if index $action "description" }}<small>{{ index $action "description" }}</small>{{ end }}
+                </a>
+              {{ end }}
+            </div>
+          {{ else if isType .Definition "admin.widget.system_status" }}
+            <ul class="status">
+              {{ range $check := index .Data "checks" }}
+                <li>
+                  <span>{{ index $check "name" }}</span>
+                  <strong class="status-badge {{ statusClass (index $check "status") }}">{{ index $check "status" }}</strong>
+                </li>
+              {{ end }}
+            </ul>
+          {{ else if isType .Definition "admin.widget.analytics_funnel" }}
+            {{ $conversion := percent (index .Data "conversion_rate") }}
+            {{ $goal := percent (valueOr (index .Data "goal") (index .Config "goal")) }}
+            <div class="funnel-callout">
+              <div>
+                <strong>{{ $conversion }}</strong>
+                <span>conversion</span>
+              </div>
+              <span class="goal-pill">Goal {{ $goal }}</span>
+            </div>
+            <ul class="activity">
+              {{ range $step := index .Data "steps" }}
+                <li>
+                  <strong>{{ index $step "label" }}</strong>
+                  {{ formatNumber (index $step "value") }} · {{ printf "%.1f%%" (index $step "percent") }} of entry
+                </li>
+              {{ end }}
+            </ul>
+          {{ else if isType .Definition "admin.widget.cohort_overview" }}
+            <ul class="activity">
+              {{ range $row := index .Data "rows" }}
+                <li>
+                  <strong>{{ index $row "label" }}</strong> — {{ index $row "size" }} signups
+                  <div>
+                    {{ range $idx, $rate := index $row "retention" }}
+                      <span style="margin-right:0.75rem;">P{{ add $idx 1 }} {{ printf "%.0f%%" $rate }}</span>
+                    {{ end }}
+                  </div>
+                </li>
+              {{ end }}
+            </ul>
+          {{ else if isType .Definition "admin.widget.alert_trends" }}
+            <ul class="activity">
+              {{ range $bucket := index .Data "series" }}
+                <li>
+                  <strong>{{ index $bucket "day" }}</strong>
+                  {{ range $row := index $bucket "counts" }}
+                    <span style="margin-left:0.5rem;">{{ index $row "severity" }}: {{ index $row "count" }}</span>
+                  {{ end }}
+                </li>
+              {{ end }}
+            </ul>
+          {{ else if isType .Definition "demo.widget.welcome" }}
+            <p><strong>{{ index .Data "headline" }}</strong></p>
+            <p>{{ index .Data "message" }}</p>
+          {{ else }}
+            <pre>{{ printf "%+v" .Data }}</pre>
           {{ end }}
-        </ul>
-      {{ else if isType .Definition "demo.widget.welcome" }}
-        <p><strong>{{ index .Data "headline" }}</strong></p>
-        <p>{{ index .Data "message" }}</p>
-      {{ else }}
-        <pre>{{ printf "%+v" .Data }}</pre>
+        </article>
       {{ end }}
-    </article>
-  {{ else }}
-    <p>No widgets configured.</p>
-  {{ end }}
+    {{ else }}
+      <p class="area-empty">No widgets configured.</p>
+    {{ end }}
+  </div>
 {{ end }}
 `
