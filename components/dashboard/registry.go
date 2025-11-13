@@ -87,6 +87,7 @@ func (r *Registry) RegisterDefinition(def WidgetDefinition) error {
 	if def.Code == "" {
 		return fmt.Errorf("widget definition code is required")
 	}
+	def.normalizeLocalizedFields()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.definitions[def.Code] = def
