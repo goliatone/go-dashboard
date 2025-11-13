@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "name": "internal-pack",
+  "package": "github.com/example/go-dashboard-internal",
+  "widgets": [
+    {
+      "definition": {
+        "code": "internal.widget.billing_backlog",
+        "name": "Billing Backlog",
+        "description": "Highlights invoices waiting for review.",
+        "category": "finance",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "age_threshold": {
+              "type": "integer",
+              "default": 7
+            },
+            "owner_team": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "provider": {
+        "name": "Billing Provider",
+        "summary": "Connects to the ERP API.",
+        "entry": "github.com/example/go-dashboard-internal.NewBillingBacklogProvider",
+        "package": "github.com/example/go-dashboard-internal",
+        "docs_url": "https://internal.example.com/docs/widgets/billing",
+        "capabilities": ["html"],
+        "channel": "internal"
+      },
+      "maintainers": ["finops@example.com"],
+      "tags": ["billing", "finance"]
+    }
+  ]
+}

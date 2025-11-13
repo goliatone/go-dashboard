@@ -1,0 +1,57 @@
+version: 1
+name: community-pack
+package: github.com/example/go-dashboard-community
+homepage: https://example.com/dashboard/community
+widgets:
+  - definition:
+      code: community.widget.pipeline_health
+      name: Pipeline Health
+      description: Tracks CI/CD durations and failure counts across repositories.
+      category: ops
+      schema:
+        type: object
+        properties:
+          repos:
+            type: array
+            items:
+              type: string
+          window_minutes:
+            type: integer
+            default: 60
+    provider:
+      name: Pipeline Health Provider
+      summary: Calls the CI insights API and normalizes metrics for the widget.
+      entry: github.com/example/go-dashboard-community.NewPipelineHealthProvider
+      package: github.com/example/go-dashboard-community
+      docs_url: https://example.com/dashboard/community/pipeline
+      capabilities: ["html", "json", "refresh"]
+      channel: community
+    maintainers:
+      - oss@example.com
+    tags: ["ci", "cd", "ops"]
+  - definition:
+      code: community.widget.incident_feed
+      name: Incident Feed
+      description: Live incident timeline backed by your StatusPage account.
+      category: status
+      schema:
+        type: object
+        properties:
+          services:
+            type: array
+            items:
+              type: string
+          show_resolved:
+            type: boolean
+            default: false
+    provider:
+      name: Incident Feed Provider
+      summary: Subscribes to StatusPage webhooks and emits dashboard refresh events.
+      entry: github.com/example/go-dashboard-community.NewIncidentFeedProvider
+      package: github.com/example/go-dashboard-community
+      docs_url: https://example.com/dashboard/community/incidents
+      capabilities: ["html", "sse"]
+      channel: partner
+    maintainers:
+      - incidents@example.com
+    tags: ["incidents", "status"]

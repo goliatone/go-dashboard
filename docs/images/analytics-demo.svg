@@ -1,0 +1,39 @@
+<svg width="720" height="420" viewBox="0 0 720 420" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .title { font: 600 20px 'Segoe UI', sans-serif; fill: #111827; }
+    .section { font: 500 14px 'Segoe UI', sans-serif; fill: #374151; }
+    .label { font: 400 12px 'Segoe UI', sans-serif; fill: #4b5563; }
+    .value { font: 600 24px 'Segoe UI', sans-serif; fill: #111827; }
+  </style>
+  <rect width="720" height="420" fill="#f3f4f6" rx="24"/>
+  <rect x="32" y="32" width="656" height="356" fill="#fff" rx="18" stroke="#e5e7eb"/>
+  <text x="56" y="68" class="title">Analytics Widgets Preview</text>
+
+  <!-- Funnel -->
+  <text x="56" y="108" class="section">Conversion Funnel</text>
+  <rect x="56" y="120" width="420" height="28" fill="#dbeafe" rx="6"/>
+  <rect x="56" y="120" width="260" height="28" fill="#3b82f6" rx="6"/>
+  <text x="64" y="138" class="label">Visitors</text>
+  <text x="360" y="138" class="value">18.5K</text>
+
+  <rect x="56" y="158" width="360" height="24" fill="#fee2e2" rx="6"/>
+  <rect x="56" y="158" width="190" height="24" fill="#f87171" rx="6"/>
+  <text x="64" y="174" class="label">Paying</text>
+  <text x="360" y="174" class="value">980</text>
+
+  <!-- Cohort -->
+  <text x="56" y="214" class="section">Cohort Overview</text>
+  <rect x="56" y="226" width="420" height="96" fill="#f9fafb" rx="10" stroke="#e5e7eb"/>
+  <text x="72" y="248" class="label">Jan 2024 · 740 signups</text>
+  <rect x="72" y="260" width="300" height="14" fill="#e5e7eb" rx="7"/>
+  <rect x="72" y="260" width="240" height="14" fill="#10b981" rx="7"/>
+  <text x="380" y="272" class="label">82% retained</text>
+
+  <!-- Alerts -->
+  <text x="56" y="346" class="section">Alert Trends</text>
+  <rect x="56" y="358" width="420" height="14" fill="#fee2e2" rx="7"/>
+  <rect x="56" y="358" width="180" height="14" fill="#ef4444" rx="7"/>
+  <rect x="240" y="358" width="120" height="14" fill="#f97316" rx="7"/>
+  <rect x="368" y="358" width="60" height="14" fill="#fbbf24" rx="7"/>
+  <text x="485" y="370" class="label">Critical / Warning / Info</text>
+</svg>
