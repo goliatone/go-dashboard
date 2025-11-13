@@ -33,11 +33,12 @@ the transport strategy that best fits their stack.
   their protocol of choice) into the relevant structs before calling the executor.
 
 ## Layout Preferences API
-- `POST /dashboard/preferences` accepts a payload containing `area_order` and
+- `POST /dashboard/preferences` accepts a payload containing `area_order`,
+  optional `layout_rows` (per-area rows with widget widths), and
   `hidden_widget_ids`. Viewer information is inferred from the router context.
 - The go-router adapter invokes `SaveLayoutPreferencesCommand`, which persists
   overrides via the configured `PreferenceStore`. `ConfigureLayout` then applies
-  user-specific ordering and hides the requested widgets.
+  user-specific ordering, row/column metadata, and hides the requested widgets.
 
 ## WebSocket Broadcast
 - `dashboard.NewBroadcastHook()` implements `RefreshHook` and fans out widget
