@@ -78,6 +78,9 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LayoutPayload returned error: %v", err)
 	}
+	if locale, ok := payload["locale"].(string); !ok || locale != "" {
+		t.Fatalf("expected empty locale for anonymous viewer, got %#v", payload["locale"])
+	}
 	areas, ok := payload["areas"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected areas map, got %T", payload["areas"])
@@ -121,6 +124,23 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 	}
 }
 
+func TestLayoutPayloadIncludesLocale(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{},
+		},
+	}
+	controller := NewController(ControllerOptions{Service: service})
+	viewer := ViewerContext{Locale: "es"}
+	payload, err := controller.LayoutPayload(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	if payload["locale"] != "es" {
+		t.Fatalf("expected locale propagated to payload, got %#v", payload["locale"])
+	}
+}
+
 func TestTemplatePathForDefinition(t *testing.T) {
 	tests := map[string]string{
 		"admin.widget.user_stats":       "widgets/user_stats.html",
@@ -132,5 +152,41 @@ func TestTemplatePathForDefinition(t *testing.T) {
 		if got := templatePathFor(def); got != expect {
 			t.Fatalf("templatePathFor(%q) = %q, want %q", def, got, expect)
 		}
+	}
+}
+
+func TestControllerSupportsCustomAreas(t *testing.T) {
+	layout := Layout{
+		Areas: map[string][]WidgetInstance{
+			"custom.hero":   {{ID: "hero-1"}},
+			"custom.bottom": {{ID: "bottom-1"}},
+		},
+	}
+	service := &stubLayoutResolver{layout: layout}
+	controller := NewController(ControllerOptions{
+		Service: service,
+		Areas: []AreaSlot{
+			{Slot: "hero", Code: "custom.hero"},
+			{Slot: "bottom", Code: "custom.bottom"},
+		},
+	})
+
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	areas, ok := payload["areas"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected areas map, got %T", payload["areas"])
+	}
+	if _, ok := areas["hero"]; !ok {
+		t.Fatalf("expected hero slot in areas map")
+	}
+	if _, ok := areas["bottom"]; !ok {
+		t.Fatalf("expected bottom slot in areas map")
+	}
+	ordered := payload["ordered_areas"].([]map[string]any)
+	if ordered[0]["slot"] != "hero" || ordered[1]["slot"] != "bottom" {
+		t.Fatalf("unexpected ordered slot sequence: %+v", ordered)
 	}
 }

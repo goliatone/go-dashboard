@@ -78,6 +78,47 @@ func TestRegisterHTMLRoute(t *testing.T) {
 	}
 }
 
+func TestDefaultViewerResolverUsesAcceptLanguage(t *testing.T) {
+	server := router.NewFiberAdapter()
+	appRouter := server.Router()
+	layout := dashboard.Layout{
+		Areas: map[string][]dashboard.WidgetInstance{
+			"admin.dashboard.main": nil,
+		},
+	}
+	service := &stubLayoutResolver{layout: layout}
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service:  service,
+		Renderer: &stubRenderer{},
+	})
+	cfg := Config[*fiber.App]{
+		Router:     appRouter,
+		Controller: controller,
+		API:        noopExecutor{},
+	}
+	if err := Register(cfg); err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+	fiberAdapter, ok := server.(interface {
+		WrappedRouter() *fiber.App
+	})
+	if !ok {
+		t.Fatalf("adapter does not expose wrapped router")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/_layout", nil)
+	req.Header.Set("Accept-Language", "es-MX,es;q=0.9,en;q=0.8")
+	resp, err := fiberAdapter.WrappedRouter().Test(req)
+	if err != nil {
+		t.Fatalf("layout request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected layout 200, got %d", resp.StatusCode)
+	}
+	if service.lastViewer.Locale != "es-mx" {
+		t.Fatalf("expected locale inferred from Accept-Language, got %q", service.lastViewer.Locale)
+	}
+}
+
 func TestRegisterWithCustomRoutes(t *testing.T) {
 	server := router.NewFiberAdapter()
 	appRouter := server.Router()
@@ -148,11 +189,13 @@ func TestRegisterWithCustomRoutes(t *testing.T) {
 }
 
 type stubLayoutResolver struct {
-	layout dashboard.Layout
-	err    error
+	layout     dashboard.Layout
+	err        error
+	lastViewer dashboard.ViewerContext
 }
 
 func (s *stubLayoutResolver) ConfigureLayout(ctx context.Context, viewer dashboard.ViewerContext) (dashboard.Layout, error) {
+	s.lastViewer = viewer
 	return s.layout, s.err
 }
 

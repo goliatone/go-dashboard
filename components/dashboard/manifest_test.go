@@ -18,6 +18,8 @@ widgets:
   - definition:
       code: community.widget.metrics
       name: Community Metrics
+      name_localized:
+        es: Métricas de la comunidad
       description: Shows metrics pushed by the community pack.
       category: community
       schema:
@@ -40,6 +42,7 @@ widgets:
 	widget := doc.Widgets[0]
 	assert.Equal(t, "community.widget.metrics", widget.Definition.Code)
 	assert.Equal(t, "Community Metrics", widget.Definition.Name)
+	assert.Equal(t, "Métricas de la comunidad", widget.Definition.NameLocalized["es"])
 	assert.Equal(t, "Community Provider", widget.Provider.Name)
 	assert.Equal(t, "github.com/example/community.Provider", widget.Provider.Entry)
 	assert.Equal(t, "community", widget.Definition.Category)

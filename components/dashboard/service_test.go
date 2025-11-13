@@ -88,6 +88,48 @@ func TestConfigureLayoutAppliesPreferenceOverrides(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutPropagatesLocale(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolveAreaFn: func(input ResolveAreaInput) (ResolvedArea, error) {
+			if input.Locale != "es-mx" {
+				t.Fatalf("expected locale propagated to store, got %q", input.Locale)
+			}
+			return ResolvedArea{
+				AreaCode: input.AreaCode,
+				Widgets: []WidgetInstance{
+					{ID: "w1", DefinitionID: "custom.widget.locale"},
+				},
+			}, nil
+		},
+	}
+	registry := NewRegistry()
+	err := registry.RegisterDefinition(WidgetDefinition{Code: "custom.widget.locale"})
+	if err != nil {
+		t.Fatalf("RegisterDefinition returned error: %v", err)
+	}
+	var providerLocale string
+	err = registry.RegisterProvider("custom.widget.locale", ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+		providerLocale = meta.Viewer.Locale
+		return WidgetData{}, nil
+	}))
+	if err != nil {
+		t.Fatalf("RegisterProvider returned error: %v", err)
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		Providers:       registry,
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		Areas:           []string{"admin.dashboard.main"},
+	})
+	viewer := ViewerContext{UserID: "user-locale", Locale: "es-mx"}
+	if _, err := service.ConfigureLayout(context.Background(), viewer); err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	if providerLocale != "es-mx" {
+		t.Fatalf("expected provider to receive locale, got %q", providerLocale)
+	}
+}
+
 func TestAddWidgetEmitsRefreshHook(t *testing.T) {
 	store := &fakeWidgetStore{
 		createInstanceFn: func(input CreateWidgetInstanceInput) (WidgetInstance, error) {
@@ -117,6 +159,31 @@ func TestAddWidgetEmitsRefreshHook(t *testing.T) {
 	}
 	if hook.events != 1 {
 		t.Fatalf("expected hook to be invoked, got %d", hook.events)
+	}
+}
+
+func TestAddWidgetPersistsLocaleMetadata(t *testing.T) {
+	store := &fakeWidgetStore{
+		createInstanceFn: func(input CreateWidgetInstanceInput) (WidgetInstance, error) {
+			if input.Metadata["locale"] != "es" {
+				t.Fatalf("expected locale metadata, got %#v", input.Metadata)
+			}
+			return WidgetInstance{ID: "instance-1", DefinitionID: input.DefinitionID}, nil
+		},
+	}
+	service := NewService(Options{
+		WidgetStore: store,
+	})
+	req := AddWidgetRequest{
+		DefinitionID: "admin.widget.user_stats",
+		AreaCode:     "admin.dashboard.main",
+		Configuration: map[string]any{
+			"metric": "total",
+		},
+		Locale: "es",
+	}
+	if err := service.AddWidget(context.Background(), req); err != nil {
+		t.Fatalf("AddWidget returned error: %v", err)
 	}
 }
 
@@ -326,5 +393,8 @@ func TestSavePreferencesStoresOverrides(t *testing.T) {
 	}
 	if !stored.HiddenWidgets["w3"] {
 		t.Fatalf("expected hidden widget persisted")
+	}
+	if stored.Locale != viewer.Locale {
+		t.Fatalf("expected locale persisted on overrides, got %q", stored.Locale)
 	}
 }

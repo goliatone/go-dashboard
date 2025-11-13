@@ -18,6 +18,9 @@ func TestInMemoryPreferenceStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LayoutOverrides returned error: %v", err)
 	}
+	if out.Locale != "en" {
+		t.Fatalf("expected locale metadata persisted, got %q", out.Locale)
+	}
 	if order := out.AreaOrder["admin.dashboard.main"]; len(order) != 2 || order[0] != "w2" {
 		t.Fatalf("expected override order, got %v", order)
 	}
