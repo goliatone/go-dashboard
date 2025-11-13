@@ -207,7 +207,8 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 		}
 		filtered := s.filterAuthorized(ctx, viewer, resolved.Widgets)
 		ordered := applyOrderOverride(filtered, overrides.AreaOrder[area])
-		layout.Areas[area] = applyHiddenFilter(ordered, overrides.HiddenWidgets)
+		withLayout := applyRowMetadata(ordered, overrides.AreaRows[area])
+		layout.Areas[area] = applyHiddenFilter(withLayout, overrides.HiddenWidgets)
 	}
 	s.recordTelemetry(ctx, "dashboard.layout.resolve", map[string]any{
 		"viewer": viewer.UserID,
@@ -230,6 +231,12 @@ func (s *Service) ResolveArea(ctx context.Context, viewer ViewerContext, areaCod
 		return ResolvedArea{}, err
 	}
 	resolved.Widgets = s.filterAuthorized(ctx, viewer, resolved.Widgets)
+	overrides, err := s.opts.PreferenceStore.LayoutOverrides(ctx, viewer)
+	if err == nil {
+		ordered := applyOrderOverride(resolved.Widgets, overrides.AreaOrder[areaCode])
+		resolved.Widgets = applyRowMetadata(ordered, overrides.AreaRows[areaCode])
+		resolved.Widgets = applyHiddenFilter(resolved.Widgets, overrides.HiddenWidgets)
+	}
 	s.recordTelemetry(ctx, "dashboard.area.resolve", map[string]any{
 		"viewer":   viewer.UserID,
 		"areaCode": areaCode,
