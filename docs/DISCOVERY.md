@@ -50,6 +50,26 @@ widgets:
 Reference manifests live in `docs/manifests/` (`community.widgets.yaml`,
 `internal.widgets.json`). Use them as fixtures when authoring your own packs.
 
+### Localized Strings
+
+Manifests may provide localized metadata alongside the default strings:
+
+```yaml
+definition:
+  code: community.widget.pipeline_health
+  name: Pipeline Health
+  name_localized:
+    es: Salud del pipeline
+  description: Tracks CI/CD durations and failure counts across repositories.
+  description_localized:
+    es: Registra la duración y fallos de CI/CD por repositorio.
+```
+
+`dashboard.ResolveLocalizedValue(localizedMap, locale, fallback)` resolves the
+best translation at runtime (e.g., `es-MX` falls back to `es` before the default
+string). Providers and templates can combine this helper with the new
+`TranslationService` to keep manifests, runtime data, and presentation in sync.
+
 ## Loading Manifests
 
 The registry now parses manifests directly:

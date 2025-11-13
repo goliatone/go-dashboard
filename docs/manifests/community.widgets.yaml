@@ -6,7 +6,11 @@ widgets:
   - definition:
       code: community.widget.pipeline_health
       name: Pipeline Health
+      name_localized:
+        es: Salud del pipeline
       description: Tracks CI/CD durations and failure counts across repositories.
+      description_localized:
+        es: Registra la duración y fallos de CI/CD por repositorio.
       category: ops
       schema:
         type: object
@@ -32,7 +36,11 @@ widgets:
   - definition:
       code: community.widget.incident_feed
       name: Incident Feed
+      name_localized:
+        es: Feed de incidentes
       description: Live incident timeline backed by your StatusPage account.
+      description_localized:
+        es: Cronología de incidentes respaldada por tu cuenta de StatusPage.
       category: status
       schema:
         type: object
