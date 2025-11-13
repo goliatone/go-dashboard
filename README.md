@@ -104,11 +104,21 @@ POST /admin/dashboard/preferences
   "area_order": {
     "admin.dashboard.main": ["widget-2", "widget-1"]
   },
+  "layout_rows": {
+    "admin.dashboard.main": [
+      {
+        "widgets": [
+          {"id": "widget-2", "width": 6},
+          {"id": "widget-1", "width": 6}
+        ]
+      }
+    ]
+  },
   "hidden_widget_ids": ["widget-3"]
 }
 ```
 
-The route uses the authenticated viewer from go-router, so transports only need to send the desired ordering/hidden widgets. The data flows through `dashboard.SavePreferences` → `PreferenceStore`, and overrides are applied automatically during `ConfigureLayout`.
+The route uses the authenticated viewer from go-router, so transports only need to send the desired ordering/hidden widgets (plus optional `layout_rows` to describe per-row widths). The data flows through `dashboard.SavePreferences` → `PreferenceStore`, and overrides are applied automatically during `ConfigureLayout`, which annotates each widget’s metadata with `layout.width`, `layout.row`, etc.
 
 ## Widget Discovery & CLI
 
