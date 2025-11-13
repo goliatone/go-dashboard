@@ -5,7 +5,9 @@
 {% else %}
 <div class="dashboard-area" data-area="{{ area.code }}">
   {% for widget in area.widgets %}
-    <section class="dashboard-widget" data-widget="{{ widget.id }}">
+    {% set layout = widget.metadata.layout if widget.metadata else {} %}
+    {% set span = layout.width or layout.columns or 12 %}
+    <section class="dashboard-widget dashboard-widget--span-{{ span }}" data-widget="{{ widget.id }}" style="--dashboard-widget-span: {{ span }}">
       {% include widget.template with widget=widget locale=locale %}
     </section>
   {% endfor %}
