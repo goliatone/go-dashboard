@@ -4,8 +4,8 @@
     <small>{{ widget.data.range or "30d" }} · {{ widget.data.segment or "All users" }}</small>
   </header>
   <div class="widget__meta">
-    <span>Conversion: {{ widget.data.conversion_rate or 0 }}%</span>
-    <span>Goal: {{ widget.data.goal or 0 }}%</span>
+    <span>{{ (widget.data.conversion_rate or 0)|floatformat:1 }}% conversion</span>
+    <span>Goal {{ (widget.data.goal or widget.config.goal or 0)|floatformat:1 }}%</span>
   </div>
   <ol class="funnel-steps">
     {% for step in widget.data.steps %}
