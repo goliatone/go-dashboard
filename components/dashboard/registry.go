@@ -28,9 +28,9 @@ type WidgetManifest struct {
 
 // Registry implements ProviderRegistry with hook + manifest support.
 type Registry struct {
-	mu          sync.RWMutex
-	definitions map[string]WidgetDefinition
-	providers   map[string]Provider
+	mu           sync.RWMutex
+	definitions  map[string]WidgetDefinition
+	providers    map[string]Provider
 	manifestMeta map[string]ManifestProvider
 }
 
