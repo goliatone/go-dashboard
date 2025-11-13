@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,64 +27,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	store := newMemoryWidgetStore()
-	registry := dashboard.NewRegistry()
-
-	customDefinition := dashboard.WidgetDefinition{
-		Code:        "demo.widget.welcome",
-		Name:        "Welcome Banner",
-		Description: "Greets the signed-in administrator.",
-		Category:    "demo",
-		Schema: map[string]any{
-			"type":       "object",
-			"properties": map[string]any{"message": map[string]any{"type": "string"}},
-		},
-	}
-	_, _ = store.EnsureDefinition(ctx, customDefinition)
-	_ = registry.RegisterDefinition(customDefinition)
-	_ = registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
-		return dashboard.WidgetData{
-			"headline": fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID),
-			"message":  meta.Instance.Configuration["message"],
-		}, nil
-	}))
-
-	service := dashboard.NewService(dashboard.Options{
-		WidgetStore: store,
-		Providers:   registry,
-	})
-
-	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
-	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: true}); err != nil {
-		log.Fatalf("seed dashboard: %v", err)
-	}
-
-	if err := service.AddWidget(ctx, dashboard.AddWidgetRequest{
-		DefinitionID: customDefinition.Code,
-		AreaCode:     "admin.dashboard.main",
-		Configuration: map[string]any{
-			"message": "All systems are running smoothly. Customize this provider to show data from your own services.",
-		},
-	}); err != nil {
-		log.Fatalf("add welcome widget: %v", err)
-	}
-	funnelPos := 0
-	if err := service.AddWidget(ctx, dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.analytics_funnel",
-		AreaCode:     "admin.dashboard.main",
-		Position:     &funnelPos,
-		Configuration: map[string]any{
-			"range":   "30d",
-			"segment": "enterprise",
-			"goal":    52,
-		},
-	}); err != nil {
-		log.Fatalf("add analytics widget: %v", err)
-	}
-
-	if err := registerAnalyticsProviders(registry); err != nil {
-		log.Fatalf("register analytics providers: %v", err)
-	}
+	service, registry, store := setupDemoDashboard(ctx)
 
 	renderer := newSampleRenderer()
 	controller := dashboard.NewController(dashboard.ControllerOptions{
@@ -264,6 +208,18 @@ func newSampleRenderer() sampleRenderer {
 		"isType":      func(definition, code string) bool { return definition == code },
 		"widgetTitle": widgetTitle,
 		"add":         func(a, b int) int { return a + b },
+		"formatNumber": func(value any) string {
+			return formatNumber(value)
+		},
+		"percent": func(value any) string {
+			return percentValue(value)
+		},
+		"statusClass": func(value any) string {
+			return statusClass(fmt.Sprint(value))
+		},
+		"valueOr": func(primary, fallback any) any {
+			return valueOr(primary, fallback)
+		},
 	}).Parse(dashboardTemplate))
 	return sampleRenderer{tmpl: tmpl}
 }
@@ -273,7 +229,7 @@ func registerAnalyticsProviders(reg *dashboard.Registry) error {
 		Funnel: dashboard.FunnelReport{
 			Range:          "30d",
 			Segment:        "enterprise",
-			ConversionRate: 4.8,
+			ConversionRate: 48.2,
 			Goal:           52,
 			Steps: []dashboard.FunnelStep{
 				{Label: "Visitors", Value: 18500, Position: 0},
@@ -312,6 +268,207 @@ func registerAnalyticsProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
+func registerDemoContentProviders(reg *dashboard.Registry) error {
+	providers := map[string]dashboard.Provider{
+		"admin.widget.user_stats": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+			return dashboard.WidgetData{
+				"title": "Account Health",
+				"values": map[string]any{
+					"total":  16804,
+					"active": 12034,
+					"new":    482,
+				},
+			}, nil
+		}),
+		"admin.widget.recent_activity": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+			return dashboard.WidgetData{
+				"items": demoActivityFeed(time.Now()),
+			}, nil
+		}),
+		"admin.widget.quick_actions": dashboard.ProviderFunc(func(context.Context, dashboard.WidgetContext) (dashboard.WidgetData, error) {
+			return dashboard.WidgetData{
+				"actions": demoQuickActions(),
+			}, nil
+		}),
+		"admin.widget.system_status": dashboard.ProviderFunc(func(context.Context, dashboard.WidgetContext) (dashboard.WidgetData, error) {
+			return dashboard.WidgetData{
+				"checks": demoStatusChecks(),
+			}, nil
+		}),
+	}
+	for code, provider := range providers {
+		if err := reg.RegisterProvider(code, provider); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func setupDemoDashboard(ctx context.Context) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
+	store := newMemoryWidgetStore()
+	registry := dashboard.NewRegistry()
+
+	customDefinition := dashboard.WidgetDefinition{
+		Code:        "demo.widget.welcome",
+		Name:        "Welcome Banner",
+		Description: "Greets the signed-in administrator.",
+		Category:    "demo",
+		Schema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{"message": map[string]any{"type": "string"}},
+		},
+	}
+	_, _ = store.EnsureDefinition(ctx, customDefinition)
+	_ = registry.RegisterDefinition(customDefinition)
+	_ = registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+		return dashboard.WidgetData{
+			"headline": fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID),
+			"message":  meta.Instance.Configuration["message"],
+		}, nil
+	}))
+
+	service := dashboard.NewService(dashboard.Options{
+		WidgetStore: store,
+		Providers:   registry,
+	})
+
+	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
+	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: false}); err != nil {
+		log.Fatalf("seed dashboard: %v", err)
+	}
+
+	if err := registerAnalyticsProviders(registry); err != nil {
+		log.Fatalf("register analytics providers: %v", err)
+	}
+	if err := registerDemoContentProviders(registry); err != nil {
+		log.Fatalf("register demo providers: %v", err)
+	}
+
+	addWidgetOrDie(ctx, service, "conversion funnel", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.analytics_funnel",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(0),
+		Configuration: map[string]any{
+			"range":   "30d",
+			"segment": "enterprise",
+			"goal":    52,
+		},
+	})
+	addWidgetOrDie(ctx, service, "welcome banner", dashboard.AddWidgetRequest{
+		DefinitionID: customDefinition.Code,
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(1),
+		Configuration: map[string]any{
+			"message": "Operations look steady. Use this space for runbook snippets or rotating notices.",
+		},
+	})
+	addWidgetOrDie(ctx, service, "user stats", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.user_stats",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(2),
+		Configuration: map[string]any{
+			"metric": "active",
+		},
+	})
+	addWidgetOrDie(ctx, service, "cohort overview", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.cohort_overview",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(3),
+		Configuration: map[string]any{
+			"interval": "weekly",
+			"periods":  6,
+			"metric":   "retained",
+		},
+	})
+	addWidgetOrDie(ctx, service, "activity feed", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.recent_activity",
+		AreaCode:     "admin.dashboard.sidebar",
+		Position:     intPtr(0),
+		Configuration: map[string]any{
+			"limit": 5,
+		},
+	})
+	addWidgetOrDie(ctx, service, "system status", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.system_status",
+		AreaCode:     "admin.dashboard.sidebar",
+		Position:     intPtr(1),
+	})
+	addWidgetOrDie(ctx, service, "quick actions", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.quick_actions",
+		AreaCode:     "admin.dashboard.footer",
+		Position:     intPtr(0),
+	})
+	addWidgetOrDie(ctx, service, "alert trends", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.alert_trends",
+		AreaCode:     "admin.dashboard.footer",
+		Position:     intPtr(1),
+		Configuration: map[string]any{
+			"lookback_days": 7,
+			"severity":      []any{"critical", "warning"},
+			"service":       "Checkout API",
+		},
+	})
+	return service, registry, store
+}
+
+func demoActivityFeed(now time.Time) []map[string]any {
+	entries := []struct {
+		User    string
+		Action  string
+		Context string
+		When    time.Duration
+	}{
+		{"Candice Reed", "published the spring pricing update", "Billing · Plan v3 rollout", 5 * time.Minute},
+		{"Noah Patel", "invited 24 enterprise seats", "Acme Industrial — Enterprise", 22 * time.Minute},
+		{"Marcos Valle", "resolved 14 aging invoices", "Finance · Treasury automation", 49 * time.Minute},
+		{"Sara Ndlovu", "shipped a dashboard theme change", "Design System · Canary env", 2 * time.Hour},
+		{"Elena Ibarra", "closed incident #782", "Checkout API · On-call", 6 * time.Hour},
+	}
+	items := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		items = append(items, map[string]any{
+			"user":   entry.User,
+			"action": entry.Action,
+			"ago":    formatAgo(now.Add(-entry.When)),
+			"detail": entry.Context,
+		})
+	}
+	return items
+}
+
+func demoQuickActions() []map[string]any {
+	return []map[string]any{
+		{"label": "Invite sales team", "route": "/admin/users/invite", "description": "Bulk import SDR seats", "icon": "users"},
+		{"label": "Plan change simulator", "route": "/admin/billing/simulator", "description": "Estimate ARR impact", "icon": "activity"},
+		{"label": "Add status update", "route": "/admin/incidents/new", "description": "Publish to StatusPage", "icon": "alert-circle"},
+		{"label": "Create automation", "route": "/admin/workflows/new", "description": "Connect alerts to Zendesk", "icon": "zap"},
+	}
+}
+
+func demoStatusChecks() []map[string]any {
+	return []map[string]any{
+		{"name": "Checkout API", "status": "healthy"},
+		{"name": "Billing jobs", "status": "degraded"},
+		{"name": "Notifications", "status": "healthy"},
+		{"name": "Background sync", "status": "investigating"},
+	}
+}
+
+func formatAgo(ts time.Time) string {
+	diff := time.Since(ts)
+	if diff < time.Minute {
+		return "just now"
+	}
+	if diff < time.Hour {
+		return fmt.Sprintf("%dm", int(diff.Minutes()))
+	}
+	if diff < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(diff.Hours()))
+	}
+	days := int(diff.Hours()) / 24
+	return fmt.Sprintf("%dd", days)
+}
+
 func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
 	view := toDashboardView(data)
 	var buf bytes.Buffer
@@ -329,6 +486,7 @@ func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string,
 type dashboardView struct {
 	Title       string
 	Description string
+	LastUpdated string
 	Areas       []areaView
 }
 
@@ -349,28 +507,16 @@ func toDashboardView(data any) dashboardView {
 	view := dashboardView{
 		Title:       stringOrDefault(raw["title"], "Dashboard"),
 		Description: stringOrDefault(raw["description"], ""),
+		LastUpdated: time.Now().Format("Jan 2 · 3:04 PM MST"),
+	}
+	if ordered := orderedAreas(raw["ordered_areas"]); len(ordered) > 0 {
+		for _, areaRaw := range ordered {
+			view.Areas = append(view.Areas, buildAreaView(areaRaw, areaCodeOrSlot(areaRaw)))
+		}
+		return view
 	}
 	if areas, ok := raw["areas"].(map[string]any); ok {
-		order := []string{
-			"admin.dashboard.main",
-			"admin.dashboard.sidebar",
-			"admin.dashboard.footer",
-		}
-		handled := map[string]bool{}
-		for _, key := range order {
-			if areaRaw, ok := areas[key].(map[string]any); ok {
-				view.Areas = append(view.Areas, buildAreaView(areaRaw, key))
-				handled[key] = true
-			}
-		}
-		for code, areaRaw := range areas {
-			if handled[code] {
-				continue
-			}
-			if typed, ok := areaRaw.(map[string]any); ok {
-				view.Areas = append(view.Areas, buildAreaView(typed, code))
-			}
-		}
+		appendAreasByOrder(&view, areas)
 	}
 	return view
 }
@@ -385,7 +531,7 @@ func buildAreaView(areaRaw map[string]any, fallback string) areaView {
 		if cfg, ok := widgetMap["config"].(map[string]any); ok {
 			widget.Config = cfg
 		}
-		if dataMap, ok := widgetMap["data"].(map[string]any); ok {
+		if dataMap := toDataMap(widgetMap["data"]); dataMap != nil {
 			widget.Data = dataMap
 		} else if widgetMap["data"] != nil {
 			widget.Data = map[string]any{"value": widgetMap["data"]}
@@ -393,6 +539,77 @@ func buildAreaView(areaRaw map[string]any, fallback string) areaView {
 		area.Widgets = append(area.Widgets, widget)
 	}
 	return area
+}
+
+func orderedAreas(raw any) []map[string]any {
+	switch v := raw.(type) {
+	case []map[string]any:
+		return v
+	case []any:
+		items := make([]map[string]any, 0, len(v))
+		for _, item := range v {
+			if m, ok := item.(map[string]any); ok {
+				items = append(items, m)
+			}
+		}
+		return items
+	default:
+		return nil
+	}
+}
+
+func appendAreasByOrder(view *dashboardView, areas map[string]any) {
+	order := []string{
+		"admin.dashboard.main",
+		"admin.dashboard.sidebar",
+		"admin.dashboard.footer",
+	}
+	handled := map[string]bool{}
+	for _, key := range order {
+		if areaRaw, ok := areas[key].(map[string]any); ok {
+			view.Areas = append(view.Areas, buildAreaView(areaRaw, key))
+			handled[key] = true
+		}
+	}
+	for code, areaRaw := range areas {
+		if handled[code] {
+			continue
+		}
+		if typed, ok := areaRaw.(map[string]any); ok {
+			view.Areas = append(view.Areas, buildAreaView(typed, code))
+		}
+	}
+}
+
+func areaCodeOrSlot(areaRaw map[string]any) string {
+	if code := stringOrDefault(areaRaw["code"], ""); code != "" {
+		return code
+	}
+	slot := stringOrDefault(areaRaw["slot"], "")
+	if slot == "main" {
+		return "admin.dashboard.main"
+	}
+	if slot == "sidebar" {
+		return "admin.dashboard.sidebar"
+	}
+	if slot == "footer" {
+		return "admin.dashboard.footer"
+	}
+	return slot
+}
+
+func toDataMap(value any) map[string]any {
+	switch v := value.(type) {
+	case dashboard.WidgetData:
+		return map[string]any(v)
+	case map[string]any:
+		return v
+	default:
+		if m, ok := value.(map[string]interface{}); ok {
+			return map[string]any(m)
+		}
+		return nil
+	}
 }
 
 func toWidgetMaps(raw any) []map[string]any {
@@ -456,43 +673,363 @@ func widgetTitle(def string) string {
 	}
 }
 
+func formatNumber(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case int:
+		return formatInt64(int64(v))
+	case int64:
+		return formatInt64(v)
+	case float64:
+		if v >= 1000 {
+			return fmt.Sprintf("%.1fk", v/1000)
+		}
+		return fmt.Sprintf("%.0f", v)
+	case float32:
+		return formatNumber(float64(v))
+	default:
+		return fmt.Sprint(value)
+	}
+}
+
+func formatInt64(n int64) string {
+	sign := ""
+	if n < 0 {
+		sign = "-"
+		n = -n
+	}
+	s := strconv.FormatInt(n, 10)
+	if len(s) <= 3 {
+		return sign + s
+	}
+	var builder strings.Builder
+	builder.WriteString(sign)
+	prefix := len(s) % 3
+	if prefix == 0 {
+		prefix = 3
+	}
+	builder.WriteString(s[:prefix])
+	for i := prefix; i < len(s); i += 3 {
+		builder.WriteByte(',')
+		builder.WriteString(s[i : i+3])
+	}
+	return builder.String()
+}
+
+func percentValue(value any) string {
+	return fmt.Sprintf("%.1f%%", float64OrDefault(value, 0))
+}
+
+func statusClass(status string) string {
+	switch strings.ToLower(status) {
+	case "healthy", "ok":
+		return "status--ok"
+	case "degraded", "warning":
+		return "status--warn"
+	default:
+		return "status--bad"
+	}
+}
+
+func valueOr(primary, fallback any) any {
+	if primary == nil {
+		return fallback
+	}
+	if str, ok := primary.(string); ok {
+		if strings.TrimSpace(str) == "" {
+			return fallback
+		}
+	}
+	return primary
+}
+
+func float64OrDefault(value any, fallback float64) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case string:
+		if parsed, err := strconv.ParseFloat(v, 64); err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
+func intPtr(value int) *int {
+	v := value
+	return &v
+}
+
+func addWidgetOrDie(ctx context.Context, svc *dashboard.Service, label string, req dashboard.AddWidgetRequest) {
+	if err := svc.AddWidget(ctx, req); err != nil {
+		log.Fatalf("add %s widget: %v", label, err)
+	}
+}
+
 const dashboardTemplate = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <title>{{ .Title }}</title>
     <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f5f7; margin: 0; }
-      header { background: #1f2937; color: white; padding: 1.5rem 2rem; }
-      header p { margin: 0.25rem 0 0; color: #d1d5db; }
-      .dashboard { padding: 2rem; display: grid; gap: 1.5rem; grid-template-columns: 2fr 1fr; }
-      .area-footer { grid-column: 1 / -1; }
-      section.area { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(31,41,55,0.12); padding: 1.5rem; }
-      section.area h2 { margin-top: 0; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 0.08em; color: #6b7280; }
-      .widget { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem; margin-top: 1rem; background: #fafafa; cursor: grab; }
-      .widget.dragging { opacity: 0.5; }
-      .widget.is-hidden { opacity: 0.35; }
-      .widget h3 { margin: 0 0 0.5rem; }
-      .metrics { display: flex; gap: 1rem; }
-      .metric { flex: 1; background: white; border-radius: 8px; padding: 0.75rem; text-align: center; }
-      .metric span { display: block; font-size: 1.4rem; font-weight: bold; }
-      .activity { list-style: none; padding: 0; margin: 0; }
-      .activity li { padding: 0.5rem 0; border-bottom: 1px solid #e5e7eb; }
-      .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-      .actions a { text-decoration: none; background: #2563eb; color: white; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; }
-      .status { list-style: none; padding: 0; margin: 0; }
-      .status li { display: flex; justify-content: space-between; padding: 0.35rem 0; }
-      .widget__toolbar { display: flex; justify-content: flex-end; gap: 0.5rem; margin-bottom: 0.5rem; }
-      .widget__toolbar button { border: none; background: #e5e7eb; border-radius: 4px; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
-      #save-status { margin: 1rem 2rem 0; color: #2563eb; font-size: 0.9rem; }
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        margin: 0;
+      }
+      header {
+        background: radial-gradient(circle at top, #1d4ed8, #0f172a);
+        color: #f8fafc;
+        padding: 2rem 3rem 2.5rem;
+        box-shadow: inset 0 0 80px rgba(15, 23, 42, 0.35);
+      }
+      .header__content {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2rem;
+      }
+      .eyebrow {
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.2em;
+        margin: 0 0 0.5rem;
+        opacity: 0.75;
+      }
+      header h1 {
+        font-size: 2.4rem;
+        margin: 0;
+      }
+      header p {
+        margin: 0.35rem 0 0;
+        color: #cbd5f5;
+      }
+      .header__meta {
+        text-align: right;
+        font-size: 0.9rem;
+        color: #cbd5f5;
+      }
+      .header__meta .badge {
+        display: inline-block;
+        margin-top: 0.35rem;
+        padding: 0.25rem 0.85rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+      }
+      #save-status {
+        margin: 0;
+        padding: 0.85rem 3rem;
+        background: #e0f2fe;
+        color: #0369a1;
+        font-size: 0.9rem;
+      }
+      .dashboard {
+        padding: 2rem 3rem 3rem;
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: 2fr 1fr;
+        background: #f8fafc;
+        min-height: calc(100vh - 220px);
+      }
+      .area-footer {
+        grid-column: 1 / -1;
+      }
+      section.area {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 25px 80px rgba(15, 23, 42, 0.08);
+        padding: 1.5rem;
+        border: 1px solid #e2e8f0;
+      }
+      section.area h2 {
+        margin-top: 0;
+        font-size: 0.95rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+      }
+      .widget {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 1.1rem;
+        margin-top: 1rem;
+        background: #fcfdff;
+        cursor: grab;
+        transition: transform 120ms ease, box-shadow 120ms ease;
+      }
+      .widget.dragging {
+        opacity: 0.7;
+        box-shadow: 0 15px 35px rgba(15, 23, 42, 0.15);
+      }
+      .widget.is-hidden {
+        opacity: 0.35;
+      }
+      .widget h3 {
+        margin: 0 0 0.5rem;
+        font-size: 1.05rem;
+      }
+      .metrics {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .metric {
+        flex: 1;
+        min-width: 140px;
+        background: #0f172a;
+        color: #f8fafc;
+        border-radius: 10px;
+        padding: 0.85rem 1rem;
+      }
+      .metric small {
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 0.7rem;
+        color: #cbd5f5;
+      }
+      .metric span {
+        display: block;
+        font-size: 1.4rem;
+        font-weight: 600;
+        margin-top: 0.3rem;
+      }
+      .activity {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .activity li {
+        padding: 0.65rem 0;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .activity li:last-child {
+        border-bottom: none;
+      }
+      .activity small {
+        display: block;
+        color: #94a3b8;
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+      .actions a {
+        text-decoration: none;
+        background: #1d4ed8;
+        color: white;
+        padding: 0.8rem 1rem;
+        border-radius: 10px;
+        font-size: 0.9rem;
+        flex: 1;
+        min-width: 180px;
+        box-shadow: 0 6px 18px rgba(29, 78, 216, 0.3);
+      }
+      .actions a small {
+        display: block;
+        margin-top: 0.25rem;
+        opacity: 0.85;
+      }
+      .status {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .status li {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.4rem 0;
+        align-items: center;
+      }
+      .status-badge {
+        padding: 0.15rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        text-transform: capitalize;
+      }
+      .status--ok {
+        background: #dcfce7;
+        color: #166534;
+      }
+      .status--warn {
+        background: #fef3c7;
+        color: #92400e;
+      }
+      .status--bad {
+        background: #fee2e2;
+        color: #b91c1c;
+      }
+      .widget__toolbar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+      }
+      .widget__toolbar button {
+        border: none;
+        background: #e2e8f0;
+        border-radius: 6px;
+        padding: 0.2rem 0.6rem;
+        cursor: pointer;
+        font-size: 0.75rem;
+      }
+      .funnel-callout {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: 1px dashed #cbd5f5;
+        padding: 0.6rem 0.8rem;
+        border-radius: 10px;
+        background: #eef2ff;
+        margin-bottom: 0.6rem;
+      }
+      .funnel-callout strong {
+        font-size: 1.3rem;
+      }
+      .goal-pill {
+        background: white;
+        border-radius: 999px;
+        padding: 0.2rem 0.9rem;
+        font-size: 0.85rem;
+        color: #4338ca;
+        border: 1px solid rgba(67, 56, 202, 0.2);
+      }
+      .widget ol {
+        padding-left: 1.2rem;
+        color: #475569;
+      }
     </style>
   </head>
   <body>
     <header>
-      <h1>{{ .Title }}</h1>
-      {{ if .Description }}<p>{{ .Description }}</p>{{ end }}
+      <div class="header__content">
+        <div>
+          <p class="eyebrow">Northwind Control Center</p>
+          <h1>{{ .Title }}</h1>
+          {{ if .Description }}
+            <p>{{ .Description }}</p>
+          {{ else }}
+            <p>Live health for revenue, adoption, and operations.</p>
+          {{ end }}
+        </div>
+        <div class="header__meta">
+          <span>Last updated {{ .LastUpdated }}</span>
+          <div class="badge">SLO · 99.95%</div>
+        </div>
+      </div>
     </header>
-    <p id="save-status">Drag widgets between areas or hit "Toggle Hide" to personalize this dashboard. Changes autosave.</p>
+    <p id="save-status">Drag widgets between areas or tap "Toggle Hide" to personalize your workspace. Preferences save immediately.</p>
     <div class="dashboard" id="dashboard">
       {{ range $idx, $area := .Areas }}
         {{ if eq $area.Code "admin.dashboard.main" }}
@@ -507,7 +1044,7 @@ const dashboardTemplate = `<!DOCTYPE html>
           </section>
         {{ else if eq $area.Code "admin.dashboard.footer" }}
           <section class="area area-footer" data-area="{{ $area.Code }}">
-            <h2>Footer</h2>
+            <h2>Operations</h2>
             {{ template "widgets" $area.Widgets }}
           </section>
         {{ end }}
@@ -613,20 +1150,26 @@ const dashboardTemplate = `<!DOCTYPE html>
           {{ range $key, $value := index .Data "values" }}
             <div class="metric">
               <small>{{ $key }}</small>
-              <span>{{ $value }}</span>
+              <span>{{ formatNumber $value }}</span>
             </div>
           {{ end }}
         </div>
       {{ else if isType .Definition "admin.widget.recent_activity" }}
         <ul class="activity">
           {{ range $item := index .Data "items" }}
-            <li><strong>{{ index $item "user" }}</strong> {{ index $item "action" }} · {{ index $item "ago" }}</li>
+            <li>
+              <strong>{{ index $item "user" }}</strong> {{ index $item "action" }} · {{ index $item "ago" }}
+              {{ if index $item "detail" }}<small>{{ index $item "detail" }}</small>{{ end }}
+            </li>
           {{ end }}
         </ul>
       {{ else if isType .Definition "admin.widget.quick_actions" }}
         <div class="actions">
           {{ range $action := index .Data "actions" }}
-            <a href="{{ index $action "route" }}">{{ index $action "label" }}</a>
+            <a href="{{ index $action "route" }}">
+              <strong>{{ index $action "label" }}</strong>
+              {{ if index $action "description" }}<small>{{ index $action "description" }}</small>{{ end }}
+            </a>
           {{ end }}
         </div>
       {{ else if isType .Definition "admin.widget.system_status" }}
@@ -634,17 +1177,25 @@ const dashboardTemplate = `<!DOCTYPE html>
           {{ range $check := index .Data "checks" }}
             <li>
               <span>{{ index $check "name" }}</span>
-              <strong>{{ index $check "status" }}</strong>
+              <strong class="status-badge {{ statusClass (index $check "status") }}">{{ index $check "status" }}</strong>
             </li>
           {{ end }}
         </ul>
       {{ else if isType .Definition "admin.widget.analytics_funnel" }}
-        <p><strong>{{ index .Data "conversion_rate" }}%</strong> conversion (goal {{ index .Data "goal" }}%)</p>
+        {{ $conversion := percent (index .Data "conversion_rate") }}
+        {{ $goal := percent (valueOr (index .Data "goal") (index .Config "goal")) }}
+        <div class="funnel-callout">
+          <div>
+            <strong>{{ $conversion }}</strong>
+            <span>conversion</span>
+          </div>
+          <span class="goal-pill">Goal {{ $goal }}</span>
+        </div>
         <ul class="activity">
           {{ range $step := index .Data "steps" }}
             <li>
               <strong>{{ index $step "label" }}</strong>
-              {{ index $step "value" }} · {{ printf "%.1f%%" (index $step "percent") }} of top
+              {{ formatNumber (index $step "value") }} · {{ printf "%.1f%%" (index $step "percent") }} of entry
             </li>
           {{ end }}
         </ul>
