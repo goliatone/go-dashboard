@@ -106,6 +106,20 @@ function dashboard:generate {
     go generate ./components/dashboard/... ./pkg/dashboard/...
 }
 
+function dashboard:widgets:scaffold {
+    if [[ $# -eq 0 ]]; then
+        echo "Usage: $0 dashboard:widgets:scaffold --code <code> --name <Name> --description <desc> --manifest <path> [flags...]"
+        return 1
+    fi
+    local gocache=${GOCACHE:-"$(pwd)/.gocache"}
+    GOCACHE="${gocache}" go run ./cmd/widgetctl scaffold "$@"
+}
+
+function dashboard:manifests:lint {
+    local gocache=${GOCACHE:-"$(pwd)/.gocache"}
+    GOCACHE="${gocache}" go test ./components/dashboard -run Manifest -count=1
+}
+
 function dev:cover {
     go test -coverprofile=coverage.out ./... && go tool cover -func coverage.out
 }
