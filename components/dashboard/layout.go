@@ -37,3 +37,40 @@ func applyHiddenFilter(widgets []WidgetInstance, hidden map[string]bool) []Widge
 	}
 	return filtered
 }
+
+func applyRowMetadata(widgets []WidgetInstance, rows []LayoutRow) []WidgetInstance {
+	if len(widgets) == 0 || len(rows) == 0 {
+		return widgets
+	}
+	index := make(map[string]int, len(widgets))
+	for i, w := range widgets {
+		index[w.ID] = i
+	}
+	for rowIdx, row := range rows {
+		colIdx := 0
+		for _, slot := range row.Widgets {
+			i, ok := index[slot.ID]
+			if !ok {
+				continue
+			}
+			if widgets[i].Metadata == nil {
+				widgets[i].Metadata = map[string]any{}
+			}
+			width := slot.Width
+			if width <= 0 {
+				width = 12
+			}
+			if width > 12 {
+				width = 12
+			}
+			widgets[i].Metadata["layout"] = map[string]any{
+				"row":     rowIdx,
+				"column":  colIdx,
+				"width":   width,
+				"columns": width,
+			}
+			colIdx++
+		}
+	}
+	return widgets
+}
