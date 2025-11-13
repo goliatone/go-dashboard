@@ -30,6 +30,7 @@ type Options struct {
 	RefreshHook     RefreshHook
 	Telemetry       Telemetry
 	Areas           []string
+	Translation     TranslationService
 }
 
 // Service orchestrates dashboard widgets on top of go-cms.
@@ -68,6 +69,7 @@ type AddWidgetRequest struct {
 	StartAt       *time.Time
 	EndAt         *time.Time
 	UserID        string
+	Locale        string
 }
 
 // AddWidget creates a widget instance and assigns it to an area.
@@ -85,6 +87,12 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 	if err := s.validateConfiguration(req.DefinitionID, req.Configuration); err != nil {
 		return err
 	}
+	metadata := map[string]any{
+		"user_id": req.UserID,
+	}
+	if req.Locale != "" {
+		metadata["locale"] = req.Locale
+	}
 	instance, err := store.CreateInstance(ctx, CreateWidgetInstanceInput{
 		DefinitionID:  req.DefinitionID,
 		Configuration: req.Configuration,
@@ -93,9 +101,7 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 			StartAt: req.StartAt,
 			EndAt:   req.EndAt,
 		},
-		Metadata: map[string]any{
-			"user_id": req.UserID,
-		},
+		Metadata: metadata,
 	})
 	if err != nil {
 		return err
@@ -281,8 +287,9 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 			continue
 		}
 		data, err := provider.Fetch(ctx, WidgetContext{
-			Instance: inst,
-			Viewer:   viewer,
+			Instance:   inst,
+			Viewer:     viewer,
+			Translator: s.opts.Translation,
 		})
 		if err != nil {
 			s.recordTelemetry(ctx, "dashboard.widget.provider_error", map[string]any{
@@ -316,6 +323,9 @@ func (s *Service) NotifyWidgetUpdated(ctx context.Context, event WidgetEvent) er
 func (s *Service) SavePreferences(ctx context.Context, viewer ViewerContext, overrides LayoutOverrides) error {
 	if viewer.UserID == "" {
 		return errors.New("dashboard: viewer context missing user id")
+	}
+	if overrides.Locale == "" {
+		overrides.Locale = viewer.Locale
 	}
 	s.normalizeOverrides(&overrides)
 	return s.opts.PreferenceStore.SaveLayoutOverrides(ctx, viewer, overrides)
