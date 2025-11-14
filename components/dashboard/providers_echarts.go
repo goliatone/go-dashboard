@@ -19,7 +19,10 @@ import (
 
 const defaultChartHeight = "360px"
 
-var scriptTagPattern = regexp.MustCompile(`(?i)<script\b(?![^>]*\bnonce=)([^>]*)>`)
+var (
+	chartVarPattern = regexp.MustCompile(`let\s+(goecharts_[A-Za-z0-9]+)\s*=`)
+	chartDivPattern = regexp.MustCompile(`id="([\w-]+)"`)
+)
 
 var sharedChartCache = NewChartCache(5 * time.Minute)
 
@@ -38,6 +41,7 @@ type EChartsProvider struct {
 	theme         string
 	themeResolver ThemeResolver
 	assetsHost    string
+	showTitle     bool
 }
 
 // EChartsProviderOption customizes provider behavior.
@@ -77,11 +81,19 @@ func NewEChartsProvider(chartType string, opts ...EChartsProviderOption) *EChart
 		chartType: strings.ToLower(chartType),
 		cache:     sharedChartCache,
 		theme:     types.ThemeWesteros,
+		showTitle: false,
 	}
 	for _, opt := range opts {
 		opt(p)
 	}
 	return p
+}
+
+// WithChartTitleVisibility toggles the internal go-echarts title/subtitle rendering.
+func WithChartTitleVisibility(enabled bool) EChartsProviderOption {
+	return func(p *EChartsProvider) {
+		p.showTitle = enabled
+	}
 }
 
 // Fetch converts widget configuration into go-echarts markup.
@@ -93,6 +105,10 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 
 	title := stringValue(cfg["title"], "Chart")
 	subtitle := stringValue(cfg["subtitle"], "")
+	title = sanitizeText(title)
+	subtitle = sanitizeText(subtitle)
+	displayTitle := title
+	displaySubtitle := subtitle
 
 	if meta.Translator != nil {
 		key := fmt.Sprintf("dashboard.widget.%s.title", meta.Instance.DefinitionID)
@@ -126,8 +142,19 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 		renderCtx.Theme = override
 	}
 
+	showTitle := boolValue(cfg["show_chart_title"])
+	if !showTitle {
+		showTitle = p.showTitle
+	}
+	chartTitle := title
+	chartSubtitle := subtitle
+	if !showTitle {
+		chartTitle = ""
+		chartSubtitle = ""
+	}
+
 	renderFn := func() (string, error) {
-		return p.render(title, subtitle, xAxis, series, renderCtx)
+		return p.render(chartTitle, chartSubtitle, xAxis, series, renderCtx)
 	}
 
 	var (
@@ -145,13 +172,14 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 		return nil, err
 	}
 
+	markup = addResponsiveBehavior(markup)
 	html := applySecurityDecorators(markup, nonceFrom(meta.Options))
 
 	data := WidgetData{
 		"chart_html": html,
 		"chart_type": p.chartType,
-		"title":      title,
-		"subtitle":   subtitle,
+		"title":      displayTitle,
+		"subtitle":   displaySubtitle,
 		"theme":      renderCtx.Theme,
 	}
 
@@ -166,73 +194,54 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 }
 
 func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (string, error) {
+	options := p.globalChartOptions(title, subtitle, ctx)
 	switch p.chartType {
 	case "bar":
-		return p.renderBarChart(title, subtitle, xAxis, series, ctx)
+		bar := charts.NewBar()
+		bar.SetGlobalOptions(options...)
+		bar.SetXAxis(xAxis)
+		for _, s := range series {
+			bar.AddSeries(s.Name, toBarData(s.Points))
+		}
+		return renderChart(bar)
 	case "line":
-		return p.renderLineChart(title, subtitle, xAxis, series, ctx)
+		line := charts.NewLine()
+		line.SetGlobalOptions(options...)
+		line.SetXAxis(xAxis)
+		for _, s := range series {
+			line.AddSeries(s.Name, toLineData(s.Points))
+		}
+		line.SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: opts.Bool(true)}))
+		return renderChart(line)
 	case "pie":
-		return p.renderPieChart(title, subtitle, series, ctx)
+		pie := charts.NewPie()
+		pie.SetGlobalOptions(options...)
+		for _, s := range series {
+			pie.AddSeries(s.Name, toPieData(s.Points))
+		}
+		return renderChart(pie)
 	case "scatter":
-		return p.renderScatterChart(title, subtitle, series, ctx)
+		scatter := charts.NewScatter()
+		scatter.SetGlobalOptions(options...)
+		for _, s := range series {
+			scatter.AddSeries(s.Name, toScatterData(s.Points))
+		}
+		return renderChart(scatter)
 	case "gauge":
-		return p.renderGaugeChart(title, series, ctx)
+		gauge := charts.NewGauge()
+		gauge.SetGlobalOptions(options...)
+		for _, s := range series {
+			if len(s.Points) == 0 {
+				continue
+			}
+			gauge.AddSeries(s.Name, []opts.GaugeData{
+				{Name: s.Name, Value: s.Points[0].Value},
+			})
+		}
+		return renderChart(gauge)
 	default:
 		return "", fmt.Errorf("unsupported chart type: %s", p.chartType)
 	}
-}
-
-func (p *EChartsProvider) renderBarChart(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (string, error) {
-	bar := charts.NewBar()
-	bar.SetGlobalOptions(p.globalChartOptions(title, subtitle, ctx)...)
-	bar.SetXAxis(xAxis)
-	for _, s := range series {
-		bar.AddSeries(s.Name, toBarData(s.Points))
-	}
-	return renderChart(bar)
-}
-
-func (p *EChartsProvider) renderLineChart(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (string, error) {
-	line := charts.NewLine()
-	line.SetGlobalOptions(p.globalChartOptions(title, subtitle, ctx)...)
-	line.SetXAxis(xAxis)
-	for _, s := range series {
-		line.AddSeries(s.Name, toLineData(s.Points))
-	}
-	line.SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: opts.Bool(true)}))
-	return renderChart(line)
-}
-
-func (p *EChartsProvider) renderPieChart(title, subtitle string, series []ChartSeries, ctx chartRenderContext) (string, error) {
-	pie := charts.NewPie()
-	pie.SetGlobalOptions(p.globalChartOptions(title, subtitle, ctx)...)
-	for _, s := range series {
-		pie.AddSeries(s.Name, toPieData(s.Points))
-	}
-	return renderChart(pie)
-}
-
-func (p *EChartsProvider) renderScatterChart(title, subtitle string, series []ChartSeries, ctx chartRenderContext) (string, error) {
-	scatter := charts.NewScatter()
-	scatter.SetGlobalOptions(p.globalChartOptions(title, subtitle, ctx)...)
-	for _, s := range series {
-		scatter.AddSeries(s.Name, toScatterData(s.Points))
-	}
-	return renderChart(scatter)
-}
-
-func (p *EChartsProvider) renderGaugeChart(title string, series []ChartSeries, ctx chartRenderContext) (string, error) {
-	gauge := charts.NewGauge()
-	gauge.SetGlobalOptions(p.globalChartOptions(title, "", ctx)...)
-	for _, s := range series {
-		if len(s.Points) == 0 {
-			continue
-		}
-		gauge.AddSeries(s.Name, []opts.GaugeData{
-			{Name: s.Name, Value: s.Points[0].Value},
-		})
-	}
-	return renderChart(gauge)
 }
 
 func renderChart(renderable interface{ Render(io.Writer) error }) (string, error) {
@@ -268,9 +277,98 @@ func injectScriptNonce(markup, nonce string) string {
 	if nonce == "" {
 		return markup
 	}
+	lower := strings.ToLower(markup)
+	if !strings.Contains(lower, "<script") {
+		return markup
+	}
 	safeNonce := template.HTMLEscapeString(nonce)
-	replacement := `<script nonce="` + safeNonce + `"$1>`
-	return scriptTagPattern.ReplaceAllString(markup, replacement)
+	var result strings.Builder
+	i := 0
+	length := len(markup)
+	for i < length {
+		next := strings.Index(lower[i:], "<script")
+		if next == -1 {
+			result.WriteString(markup[i:])
+			break
+		}
+		next += i
+		tagStart := next + len("<script")
+		result.WriteString(markup[i:tagStart])
+
+		attrEnd := strings.Index(markup[tagStart:], ">")
+		if attrEnd == -1 {
+			result.WriteString(markup[tagStart:])
+			break
+		}
+		attrEnd += tagStart
+		attrs := markup[tagStart:attrEnd]
+		if !strings.Contains(strings.ToLower(attrs), "nonce=") {
+			result.WriteString(` nonce="` + safeNonce + `"`)
+		}
+		result.WriteString(attrs)
+		result.WriteByte('>')
+		i = attrEnd + 1
+	}
+	return result.String()
+}
+
+func addResponsiveBehavior(markup string) string {
+	if markup == "" {
+		return markup
+	}
+	varName := chartVariable(markup)
+	if varName == "" {
+		return markup
+	}
+	containerID := chartContainerID(markup)
+	snippet := buildResizeSnippet(varName, containerID)
+	if snippet == "" {
+		return markup
+	}
+	closing := "</script>"
+	idx := strings.LastIndex(markup, closing)
+	if idx == -1 {
+		return markup
+	}
+	return markup[:idx] + snippet + markup[idx:]
+}
+
+func chartVariable(markup string) string {
+	matches := chartVarPattern.FindStringSubmatch(markup)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
+}
+
+func chartContainerID(markup string) string {
+	matches := chartDivPattern.FindStringSubmatch(markup)
+	if len(matches) < 2 {
+		return ""
+	}
+	return matches[1]
+}
+
+func buildResizeSnippet(varName, containerID string) string {
+	if varName == "" {
+		return ""
+	}
+	container := containerID
+	if container == "" {
+		container = strings.TrimPrefix(varName, "goecharts_")
+	}
+	return fmt.Sprintf(`
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", function() {
+        try { %s.resize(); } catch (err) {}
+      });
+      if (window.ResizeObserver && document.getElementById("%s")) {
+        new ResizeObserver(function() {
+          try { %s.resize(); } catch (err) {}
+        }).observe(document.getElementById("%s"));
+      }
+    }
+`, varName, container, varName, container)
 }
 
 func (p *EChartsProvider) globalChartOptions(title, subtitle string, ctx chartRenderContext) []charts.GlobalOpts {
@@ -282,13 +380,16 @@ func (p *EChartsProvider) globalChartOptions(title, subtitle string, ctx chartRe
 	if p.assetsHost != "" {
 		initOpts.AssetsHost = p.assetsHost
 	}
-	return []charts.GlobalOpts{
-		charts.WithTitleOpts(opts.Title{Title: title, Subtitle: subtitle}),
+	optsList := []charts.GlobalOpts{
 		charts.WithInitializationOpts(initOpts),
 		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true)}),
 		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
 		charts.WithToolboxOpts(opts.Toolbox{Show: opts.Bool(true)}),
 	}
+	if title != "" || subtitle != "" {
+		optsList = append([]charts.GlobalOpts{charts.WithTitleOpts(opts.Title{Title: title, Subtitle: subtitle})}, optsList...)
+	}
+	return optsList
 }
 
 func (p *EChartsProvider) resolveTheme(viewer ViewerContext) string {
