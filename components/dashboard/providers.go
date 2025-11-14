@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"math/rand"
 	"time"
 )
 
@@ -31,13 +30,10 @@ var defaultProviders = map[string]Provider{
 		}
 		return WidgetData{"items": items}, nil
 	}),
-	"admin.widget.sales_chart": ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
-		points := make([]int, 7)
-		for i := range points {
-			points[i] = rand.Intn(100) //nolint:gosec
-		}
-		return WidgetData{"series": points, "range": meta.Instance.Configuration["range"]}, nil
-	}),
+	"admin.widget.sales_chart": NewSalesChartProvider(
+		NewStaticSalesRepository(defaultSalesSeries()),
+		NewEChartsProvider("line"),
+	),
 	"admin.widget.quick_actions": ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
 		inviteLabel := translateOrFallback(ctx, meta.Translator, "dashboard.widget.quick_actions.invite_user", meta.Viewer.Locale, "Invite user", nil)
 		pageLabel := translateOrFallback(ctx, meta.Translator, "dashboard.widget.quick_actions.create_page", meta.Viewer.Locale, "Create page", nil)
@@ -63,4 +59,17 @@ var defaultProviders = map[string]Provider{
 	"admin.widget.analytics_funnel": NewFunnelAnalyticsProvider(DemoFunnelRepository{}),
 	"admin.widget.cohort_overview":  NewCohortAnalyticsProvider(DemoCohortRepository{}),
 	"admin.widget.alert_trends":     NewAlertTrendsProvider(DemoAlertRepository{}),
+}
+
+func defaultSalesSeries() []SalesSeriesPoint {
+	now := time.Now().UTC()
+	values := []float64{11800, 12650, 13200, 14150, 15200, 16120}
+	points := make([]SalesSeriesPoint, len(values))
+	for i, value := range values {
+		points[i] = SalesSeriesPoint{
+			Timestamp: now.AddDate(0, 0, -7*(len(values)-i)),
+			Value:     value,
+		}
+	}
+	return points
 }
