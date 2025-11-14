@@ -27,3 +27,5 @@ type WidgetContext struct {
 
 // WidgetData is an opaque payload passed to templates.
 type WidgetData map[string]any
+
+const scriptNonceOptionKey = "dashboard.widget.script_nonce"
