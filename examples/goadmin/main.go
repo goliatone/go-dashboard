@@ -7,12 +7,14 @@ import (
 	"html/template"
 	"io"
 	"log"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/compress"
 	router "github.com/goliatone/go-router"
 
 	"github.com/goliatone/go-dashboard/components/dashboard"
@@ -130,7 +132,13 @@ func main() {
 
 	hook := dashboard.NewBroadcastHook()
 
-	server := router.NewFiberAdapter()
+	server := router.NewFiberAdapter(func(app *fiber.App) *fiber.App {
+		app = router.DefaultFiberOptions(app)
+		if os.Getenv("GO_DASHBOARD_ENABLE_GZIP") != "" {
+			app.Use(compress.New())
+		}
+		return app
+	})
 	appRouter := server.Router()
 	if err := gorouter.Register(gorouter.Config[*fiber.App]{
 		Router:     appRouter,
@@ -166,7 +174,7 @@ func main() {
 		log.Fatalf("bootstrap: %v", err)
 	}
 
-	log.Printf("dashboard routes ready: http://localhost:8080/admin/dashboard")
+	log.Printf("dashboard routes ready: http://localhost:9876/admin/dashboard")
 	log.Printf("Try locale switching via http://localhost:9876/admin/dashboard?locale=es")
 	log.Printf("API endpoints: POST %s, DELETE %s, WebSocket %s",
 		"/admin/dashboard/widgets",
@@ -229,6 +237,16 @@ func (s *memoryWidgetStore) CreateInstance(ctx context.Context, input dashboard.
 	return instance, nil
 }
 
+func (s *memoryWidgetStore) GetInstance(ctx context.Context, instanceID string) (dashboard.WidgetInstance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inst, ok := s.instances[instanceID]
+	if !ok {
+		return dashboard.WidgetInstance{}, fmt.Errorf("instance %s not found", instanceID)
+	}
+	return inst, nil
+}
+
 func (s *memoryWidgetStore) DeleteInstance(ctx context.Context, instanceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -276,6 +294,23 @@ func (s *memoryWidgetStore) ResolveArea(ctx context.Context, input dashboard.Res
 	}, nil
 }
 
+func (s *memoryWidgetStore) UpdateInstance(ctx context.Context, input dashboard.UpdateWidgetInstanceInput) (dashboard.WidgetInstance, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	inst, ok := s.instances[input.InstanceID]
+	if !ok {
+		return dashboard.WidgetInstance{}, fmt.Errorf("instance %s not found", input.InstanceID)
+	}
+	if input.Configuration != nil {
+		inst.Configuration = input.Configuration
+	}
+	if input.Metadata != nil {
+		inst.Metadata = input.Metadata
+	}
+	s.instances[input.InstanceID] = inst
+	return inst, nil
+}
+
 func filterIDs(ids []string, drop string) []string {
 	out := ids[:0]
 	for _, id := range ids {
@@ -298,10 +333,11 @@ type sampleRenderer struct {
 
 func newSampleRenderer() sampleRenderer {
 	tmpl := template.Must(template.New("dashboard").Funcs(template.FuncMap{
-		"isType":      func(definition, code string) bool { return definition == code },
-		"widgetTitle": widgetTitle,
-		"widgetSpan":  widgetSpanMeta,
-		"add":         func(a, b int) int { return a + b },
+		"isType":        func(definition, code string) bool { return definition == code },
+		"widgetTitle":   widgetTitle,
+		"widgetHeading": widgetHeading,
+		"widgetSpan":    widgetSpanMeta,
+		"add":           func(a, b int) int { return a + b },
 		"formatNumber": func(value any) string {
 			return formatNumber(value)
 		},
@@ -314,6 +350,8 @@ func newSampleRenderer() sampleRenderer {
 		"valueOr": func(primary, fallback any) any {
 			return valueOr(primary, fallback)
 		},
+		"chartWidget": isChartDefinition,
+		"chartMarkup": chartMarkup,
 	}).Parse(dashboardTemplate))
 	return sampleRenderer{tmpl: tmpl}
 }
@@ -394,6 +432,18 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 		if err := reg.RegisterProvider(code, provider); err != nil {
 			return err
 		}
+	}
+	cdnHost := os.Getenv("GO_DASHBOARD_ECHARTS_CDN")
+	if cdnHost == "" {
+		cdnHost = "https://cdn.jsdelivr.net/npm/echarts@5/dist/"
+	}
+	salesRenderer := dashboard.NewEChartsProvider(
+		"line",
+		dashboard.WithChartCache(dashboard.NewChartCache(10*time.Minute)),
+		dashboard.WithChartAssetsHost(cdnHost),
+	)
+	if err := reg.RegisterProvider("admin.widget.sales_chart", dashboard.NewSalesChartProvider(demoSalesRepository{}, salesRenderer)); err != nil {
+		return err
 	}
 	return nil
 }
@@ -505,6 +555,35 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"metric":   "retained",
 		},
 	})
+	addWidgetOrDie(ctx, service, "monthly sales chart", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.bar_chart",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(4),
+		Configuration: map[string]any{
+			"title":    "Monthly Sales",
+			"subtitle": "Revenue by region",
+			"x_axis":   []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
+			"series": []map[string]any{
+				{"name": "North America", "data": []float64{120, 132, 101, 134, 90, 230}},
+				{"name": "Europe", "data": []float64{220, 182, 191, 234, 290, 330}},
+				{"name": "Asia Pacific", "data": []float64{150, 232, 201, 154, 190, 330}},
+			},
+		},
+	})
+	addWidgetOrDie(ctx, service, "user growth chart", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.line_chart",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(5),
+		Configuration: map[string]any{
+			"title":  "Weekly User Growth",
+			"x_axis": []string{"Week 1", "Week 2", "Week 3", "Week 4"},
+			"series": []map[string]any{
+				{"name": "Active Users", "data": []float64{1200, 1320, 1450, 1580}},
+				{"name": "New Signups", "data": []float64{150, 180, 220, 250}},
+			},
+			"footer_note": "Data refreshed nightly · demo dataset",
+		},
+	})
 	addWidgetOrDie(ctx, service, "activity feed", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.recent_activity",
 		AreaCode:     "admin.dashboard.sidebar",
@@ -517,6 +596,26 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 		DefinitionID: "admin.widget.system_status",
 		AreaCode:     "admin.dashboard.sidebar",
 		Position:     intPtr(1),
+	})
+	addWidgetOrDie(ctx, service, "traffic sources chart", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.pie_chart",
+		AreaCode:     "admin.dashboard.sidebar",
+		Position:     intPtr(2),
+		Configuration: map[string]any{
+			"title": "Traffic Sources",
+			"series": []map[string]any{
+				{
+					"name": "Sources",
+					"data": []map[string]any{
+						{"name": "Direct", "value": 335},
+						{"name": "Organic Search", "value": 310},
+						{"name": "Social Media", "value": 234},
+						{"name": "Email", "value": 135},
+						{"name": "Referral", "value": 148},
+					},
+				},
+			},
+		},
 	})
 	addWidgetOrDie(ctx, service, "quick actions", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.quick_actions",
@@ -531,6 +630,49 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"lookback_days": 7,
 			"severity":      []any{"critical", "warning"},
 			"service":       "Checkout API",
+		},
+	})
+	addWidgetOrDie(ctx, service, "scatter correlation", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.scatter_chart",
+		AreaCode:     "admin.dashboard.main",
+		Position:     intPtr(6),
+		Configuration: map[string]any{
+			"title": "Churn vs NPS",
+			"series": []map[string]any{
+				{
+					"name": "Segments",
+					"data": []map[string]any{
+						{"name": "Enterprise", "x": 3.2, "y": 96},
+						{"name": "Mid-market", "x": 5.1, "y": 88},
+						{"name": "SMB", "x": 7.4, "y": 72},
+					},
+				},
+			},
+		},
+	})
+	addWidgetOrDie(ctx, service, "uptime gauge", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.gauge_chart",
+		AreaCode:     "admin.dashboard.sidebar",
+		Position:     intPtr(3),
+		Configuration: map[string]any{
+			"title": "Platform SLA",
+			"series": []map[string]any{
+				{"name": "SLA", "data": []float64{99.2}},
+			},
+			"theme": "wonderland",
+		},
+	})
+	addWidgetOrDie(ctx, service, "sales pulse", dashboard.AddWidgetRequest{
+		DefinitionID: "admin.widget.sales_chart",
+		AreaCode:     "admin.dashboard.footer",
+		Position:     intPtr(2),
+		Configuration: map[string]any{
+			"period":            "30d",
+			"metric":            "revenue",
+			"comparison_metric": "orders",
+			"segment":           "enterprise",
+			"dynamic":           true,
+			"refresh_endpoint":  "/admin/api/sales/revenue",
 		},
 	})
 	seedDefaultLayout(ctx, service, defaultViewer)
@@ -877,6 +1019,44 @@ func widgetTitle(def string) string {
 	}
 }
 
+func widgetHeading(widget widgetView) string {
+	if widget.Data != nil {
+		if title := stringOrDefault(widget.Data["title"], ""); title != "" {
+			return title
+		}
+	}
+	if widget.Config != nil {
+		if title := stringOrDefault(widget.Config["title"], ""); title != "" {
+			return title
+		}
+	}
+	return widgetTitle(widget.Definition)
+}
+
+func chartMarkup(data map[string]any) template.HTML {
+	if data == nil {
+		return ""
+	}
+	if html, ok := data["chart_html"].(string); ok && html != "" {
+		return template.HTML(html)
+	}
+	return ""
+}
+
+func isChartDefinition(def string) bool {
+	switch def {
+	case "admin.widget.bar_chart",
+		"admin.widget.line_chart",
+		"admin.widget.pie_chart",
+		"admin.widget.scatter_chart",
+		"admin.widget.gauge_chart",
+		"admin.widget.sales_chart":
+		return true
+	default:
+		return false
+	}
+}
+
 func widgetSpanMeta(meta map[string]any) int {
 	if meta == nil {
 		return 12
@@ -1076,6 +1256,21 @@ func addWidgetOrDie(ctx context.Context, svc *dashboard.Service, label string, r
 	}
 }
 
+type demoSalesRepository struct{}
+
+func (demoSalesRepository) FetchSalesSeries(_ context.Context, query dashboard.SalesSeriesQuery) ([]dashboard.SalesSeriesPoint, error) {
+	values := []float64{11800, 12640, 13320, 14250, 15730, 16980}
+	points := make([]dashboard.SalesSeriesPoint, len(values))
+	now := time.Now().UTC()
+	for i, value := range values {
+		points[i] = dashboard.SalesSeriesPoint{
+			Timestamp: now.AddDate(0, 0, -7*(len(values)-i)),
+			Value:     value,
+		}
+	}
+	return points, nil
+}
+
 const dashboardTemplate = `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -1195,6 +1390,13 @@ const dashboardTemplate = `<!DOCTYPE html>
       .widget h3 {
         margin: 0 0 0.5rem;
         font-size: 1.05rem;
+      }
+      .widget-chart {
+        overflow: hidden;
+        min-height: 320px;
+      }
+      .widget-chart > div {
+        width: 100% !important;
       }
       .metrics {
         display: flex;
@@ -1423,8 +1625,11 @@ const dashboardTemplate = `<!DOCTYPE html>
             const next = current === 12 ? 6 : 12;
             widget.dataset.span = next;
             widget.style.setProperty("--span", next);
+            btn.textContent = next === 12 ? "Half Width" : "Full Width";
             saveLayout();
           });
+          const initial = parseInt(widget.dataset.span || "12", 10);
+          btn.textContent = initial === 12 ? "Half Width" : "Full Width";
         });
 
         function getDragAfterElement(container, y) {
@@ -1512,7 +1717,7 @@ const dashboardTemplate = `<!DOCTYPE html>
             <button type="button" class="hide-widget">Toggle Hide</button>
             <button type="button" class="resize-widget" {{ if not $resizable }}disabled title="Resize only available in Main or Operations"{{ end }}>Half Width</button>
           </div>
-          <h3>{{ widgetTitle .Definition }}</h3>
+          <h3>{{ widgetHeading . }}</h3>
           {{ if isType .Definition "admin.widget.user_stats" }}
             <div class="metrics">
               {{ range $key, $value := index .Data "values" }}
@@ -1591,6 +1796,15 @@ const dashboardTemplate = `<!DOCTYPE html>
                 </li>
               {{ end }}
             </ul>
+          {{ else if chartWidget .Definition }}
+            {{ $chart := chartMarkup .Data }}
+            {{ if $chart }}
+              <div class="widget-chart">
+                {{ $chart }}
+              </div>
+            {{ else }}
+              <p class="area-empty">No chart data available.</p>
+            {{ end }}
           {{ else if isType .Definition "demo.widget.welcome" }}
             <p><strong>{{ index .Data "headline" }}</strong></p>
             <p>{{ index .Data "message" }}</p>
