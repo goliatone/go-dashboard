@@ -11,8 +11,10 @@ type WidgetStore interface {
 	EnsureArea(ctx context.Context, def WidgetAreaDefinition) (bool, error)
 	EnsureDefinition(ctx context.Context, def WidgetDefinition) (bool, error)
 	CreateInstance(ctx context.Context, input CreateWidgetInstanceInput) (WidgetInstance, error)
+	GetInstance(ctx context.Context, instanceID string) (WidgetInstance, error)
 	DeleteInstance(ctx context.Context, instanceID string) error
 	AssignInstance(ctx context.Context, input AssignWidgetInput) error
+	UpdateInstance(ctx context.Context, input UpdateWidgetInstanceInput) (WidgetInstance, error)
 	ReorderArea(ctx context.Context, input ReorderAreaInput) error
 	ResolveArea(ctx context.Context, input ResolveAreaInput) (ResolvedArea, error)
 }
@@ -74,6 +76,13 @@ type CreateWidgetInstanceInput struct {
 	DefinitionID  string
 	Configuration map[string]any
 	Visibility    WidgetVisibility
+	Metadata      map[string]any
+}
+
+// UpdateWidgetInstanceInput mutates existing widget instances.
+type UpdateWidgetInstanceInput struct {
+	InstanceID    string
+	Configuration map[string]any
 	Metadata      map[string]any
 }
 
