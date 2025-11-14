@@ -1,6 +1,13 @@
 # Go Dashboard
 
-Core building blocks for go-admin dashboards backed by go-cms widgets.
+Go Dashboard is a modular toolkit for building server rendered admin dashboards in Go. It provides a layout service, HTTP controller, template renderer, router adapters, CLI tooling, and a provider system so you can compose dashboards from reusable widget definitions stored anywhere (database, CMS, or custom service).
+
+### Key capabilities
+
+- Layout orchestration with per-viewer preferences, telemetry hooks, and WebSocket refresh/broadcast helpers.
+- Router-agnostic HTTP/JSON/WebSocket endpoints (first-class support for go-router) plus a thin façade in `pkg/dashboard`.
+- Widget provider registry with analytics/chart helpers, schema validation, and manifest-driven discovery/CLI scaffolding.
+- Localization helpers for templates and providers, plus translation-aware analytics/chart payloads.
 
 ## Packages
 
@@ -15,12 +22,11 @@ Core building blocks for go-admin dashboards backed by go-cms widgets.
 
 ## Quick Start
 
-1. Add go-dashboard alongside go-cms/go-admin in your module and provide a `WidgetStore`
-   implementation (typically the go-cms widgets service).
+1. Add go-dashboard to your module and implement `WidgetStore` (wrap go-cms, a custom DB, etc.).
 2. Build a `dashboard.Service` with any optional dependencies you need
-   (`Authorizer`, `PreferenceStore`, telemetry hooks, etc.).
+   (`Authorizer`, `PreferenceStore`, telemetry hooks, analytics providers, etc.).
 3. Seed the dashboard (areas, definitions, default layout) once at bootstrap time.
-4. Mount the go-router adapter so the HTML, JSON, REST, and WebSocket routes are available.
+4. Mount the go-router adapter (or wire your own `httpapi.Executor`) so the HTML, JSON, REST, and WebSocket routes are available.
 
 ```go
 import (
@@ -66,14 +72,7 @@ while keeping the same controller/executor wiring.
 
 ## Advanced Analytics Widgets
 
-Phase 8 adds `analytics_funnel`, `cohort_overview`, and `alert_trends`
-definitions plus DI-friendly providers so dashboards can surface BI data
-without embedding transport logic. Configuration payloads are validated via
-JSON schema before the widgets reach go-cms, and each template exposes CSS
-hooks for fine-grained styling. Use `pkg/analytics` to wrap your HTTP BI or
-observability clients and pass the resulting repositories into
-`dashboard.New*AnalyticsProvider`. See `docs/ANALYTICS.md` for schemas,
-provider interfaces, and screenshots.
+`analytics_funnel`, `cohort_overview`, and `alert_trends` templates ship with DI-friendly providers so dashboards can surface BI/observability data without embedding transport logic. Configuration payloads are validated via JSON schema before widgets hit the store, and templates expose CSS hooks for fine-grained styling. Use `pkg/analytics` to wrap your HTTP BI or observability clients and pass the resulting repositories into `dashboard.New*AnalyticsProvider`. See `docs/ANALYTICS.md` for schemas, provider interfaces, and screenshots.
 
 ## Architecture
 
@@ -122,10 +121,10 @@ The route uses the authenticated viewer from go-router, so transports only need 
 
 ## Widget Discovery & CLI
 
-Phase 9 ships manifest-driven discovery so third-party widgets can be registered
-without touching Go code. Author manifests (see `docs/DISCOVERY.md` and the
-samples under `docs/manifests/`), then load them via
-`registry.LoadManifestFile("docs/manifests/community.widgets.yaml")`. The new
+Manifest-driven discovery lets third-party widgets register without touching Go
+code. Author manifests (see `docs/DISCOVERY.md` and the samples under
+`docs/manifests/`), then load them via
+`registry.LoadManifestFile("docs/manifests/community.widgets.yaml")`. The
 `cmd/widgetctl` binary (also exposed as `./taskfile dashboard:widgets:scaffold`)
 generates manifest entries, JSON schemas, and provider stubs in one step:
 
