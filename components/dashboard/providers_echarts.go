@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,8 @@ import (
 )
 
 const defaultChartHeight = "360px"
+
+var scriptTagPattern = regexp.MustCompile(`(?i)<script\b(?![^>]*\bnonce=)([^>]*)>`)
 
 var sharedChartCache = NewChartCache(5 * time.Minute)
 
@@ -96,6 +100,8 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 			title = translated
 		}
 	}
+	title = sanitizeText(title)
+	subtitle = sanitizeText(subtitle)
 
 	series := parseChartSeries(cfg["series"])
 	if len(series) == 0 {
@@ -109,6 +115,8 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 
 	xAxis = p.translateAxis(ctx, meta, xAxis)
 	p.translateSeries(ctx, meta, series)
+	xAxis = sanitizeLabels(xAxis)
+	sanitizeSeries(series)
 
 	renderCtx := chartRenderContext{
 		Viewer: meta.Viewer,
@@ -123,19 +131,21 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 	}
 
 	var (
-		html string
-		err  error
+		markup string
+		err    error
 	)
 
 	if p.cache != nil {
 		key := fmt.Sprintf("%s:%s:%s:%s", meta.Instance.DefinitionID, meta.Instance.ID, p.chartType, configHash(cfg))
-		html, err = p.cache.GetOrRender(key, renderFn)
+		markup, err = p.cache.GetOrRender(key, renderFn)
 	} else {
-		html, err = renderFn()
+		markup, err = renderFn()
 	}
 	if err != nil {
 		return nil, err
 	}
+
+	html := applySecurityDecorators(markup, nonceFrom(meta.Options))
 
 	data := WidgetData{
 		"chart_html": html,
@@ -231,6 +241,36 @@ func renderChart(renderable interface{ Render(io.Writer) error }) (string, error
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func nonceFrom(options map[string]any) string {
+	if len(options) == 0 {
+		return ""
+	}
+	raw, ok := options[scriptNonceOptionKey]
+	if !ok {
+		return ""
+	}
+	if s, ok := raw.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return ""
+}
+
+func applySecurityDecorators(markup, nonce string) string {
+	if nonce == "" {
+		return markup
+	}
+	return injectScriptNonce(markup, nonce)
+}
+
+func injectScriptNonce(markup, nonce string) string {
+	if nonce == "" {
+		return markup
+	}
+	safeNonce := template.HTMLEscapeString(nonce)
+	replacement := `<script nonce="` + safeNonce + `"$1>`
+	return scriptTagPattern.ReplaceAllString(markup, replacement)
 }
 
 func (p *EChartsProvider) globalChartOptions(title, subtitle string, ctx chartRenderContext) []charts.GlobalOpts {
@@ -442,12 +482,16 @@ func pairFromMap(m map[string]any) []float64 {
 func stringSliceValue(v any) []string {
 	switch val := v.(type) {
 	case []string:
-		return append([]string(nil), val...)
+		out := make([]string, len(val))
+		for i, item := range val {
+			out[i] = sanitizeText(item)
+		}
+		return out
 	case []any:
 		out := make([]string, 0, len(val))
 		for _, item := range val {
 			if s, ok := item.(string); ok {
-				out = append(out, s)
+				out = append(out, sanitizeText(s))
 			}
 		}
 		return out
@@ -497,6 +541,34 @@ func boolValue(v any) bool {
 		return val != 0
 	default:
 		return false
+	}
+}
+
+func sanitizeText(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return template.HTMLEscapeString(value)
+}
+
+func sanitizeLabels(labels []string) []string {
+	if len(labels) == 0 {
+		return labels
+	}
+	out := make([]string, len(labels))
+	for i, label := range labels {
+		out[i] = sanitizeText(label)
+	}
+	return out
+}
+
+func sanitizeSeries(series []ChartSeries) {
+	for i := range series {
+		series[i].Name = sanitizeText(series[i].Name)
+		for j := range series[i].Points {
+			series[i].Points[j].Label = sanitizeText(series[i].Points[j].Label)
+		}
 	}
 }
 
