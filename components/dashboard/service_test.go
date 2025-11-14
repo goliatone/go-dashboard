@@ -3,6 +3,8 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -274,6 +276,7 @@ type fakeWidgetStore struct {
 	reorderAreaFn     func(input ReorderAreaInput) error
 	resolveAreaFn     func(input ResolveAreaInput) (ResolvedArea, error)
 	resolved          map[string][]WidgetInstance
+	instances         map[string]WidgetInstance
 	assignCalls       []AssignWidgetInput
 	reorderCalls      []ReorderAreaInput
 	createdDefinition []string
@@ -300,7 +303,23 @@ func (f *fakeWidgetStore) CreateInstance(ctx context.Context, input CreateWidget
 	if f.createInstanceFn != nil {
 		return f.createInstanceFn(input)
 	}
-	return WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID}, nil
+	inst := WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID, Configuration: input.Configuration}
+	if f.instances == nil {
+		f.instances = map[string]WidgetInstance{}
+	}
+	f.instances[inst.ID] = inst
+	return inst, nil
+}
+
+func (f *fakeWidgetStore) GetInstance(ctx context.Context, id string) (WidgetInstance, error) {
+	if f.instances == nil {
+		return WidgetInstance{}, fmt.Errorf("instance %s not found", id)
+	}
+	inst, ok := f.instances[id]
+	if !ok {
+		return WidgetInstance{}, fmt.Errorf("instance %s not found", id)
+	}
+	return inst, nil
 }
 
 func (f *fakeWidgetStore) DeleteInstance(context.Context, string) error { return nil }
@@ -329,6 +348,24 @@ func (f *fakeWidgetStore) ResolveArea(ctx context.Context, input ResolveAreaInpu
 		return ResolvedArea{AreaCode: input.AreaCode, Widgets: widgets}, nil
 	}
 	return ResolvedArea{AreaCode: input.AreaCode, Widgets: []WidgetInstance{}}, nil
+}
+
+func (f *fakeWidgetStore) UpdateInstance(ctx context.Context, input UpdateWidgetInstanceInput) (WidgetInstance, error) {
+	if f.instances == nil {
+		return WidgetInstance{}, fmt.Errorf("instance %s not found", input.InstanceID)
+	}
+	inst, ok := f.instances[input.InstanceID]
+	if !ok {
+		return WidgetInstance{}, fmt.Errorf("instance %s not found", input.InstanceID)
+	}
+	if input.Configuration != nil {
+		inst.Configuration = input.Configuration
+	}
+	if input.Metadata != nil {
+		inst.Metadata = input.Metadata
+	}
+	f.instances[input.InstanceID] = inst
+	return inst, nil
 }
 
 type allowListAuthorizer struct {
@@ -366,6 +403,51 @@ func TestPreferenceStoreDefaultOverrides(t *testing.T) {
 	}
 	if overrides.AreaOrder == nil {
 		t.Fatalf("expected default map")
+	}
+}
+
+func TestUpdateWidgetRequiresID(t *testing.T) {
+	service := NewService(Options{WidgetStore: &fakeWidgetStore{}})
+	if err := service.UpdateWidget(context.Background(), "", UpdateWidgetRequest{}); err == nil {
+		t.Fatalf("expected error for missing widget id")
+	}
+}
+
+func TestUpdateWidgetValidatesConfigAndEmitsEvent(t *testing.T) {
+	store := &fakeWidgetStore{instances: map[string]WidgetInstance{
+		"w1": {
+			ID:           "w1",
+			DefinitionID: "admin.widget.bar_chart",
+			AreaCode:     "admin.dashboard.main",
+			Configuration: map[string]any{
+				"series": []map[string]any{{"name": "S1", "data": []float64{1}}},
+			},
+		},
+	}}
+	hook := &collectingHook{}
+	service := NewService(Options{WidgetStore: store, RefreshHook: hook})
+	cfg := map[string]any{
+		"series": []map[string]any{{"name": "S1", "data": []float64{1, 2}}},
+	}
+	if err := service.UpdateWidget(context.Background(), "w1", UpdateWidgetRequest{Configuration: cfg}); err != nil {
+		t.Fatalf("UpdateWidget returned error: %v", err)
+	}
+	if hook.events != 1 {
+		t.Fatalf("expected refresh event recorded")
+	}
+	updated, _ := store.GetInstance(context.Background(), "w1")
+	if !reflect.DeepEqual(updated.Configuration, cfg) {
+		t.Fatalf("expected configuration updated, got %#v", updated.Configuration)
+	}
+}
+
+func TestUpdateWidgetValidatesSchema(t *testing.T) {
+	store := &fakeWidgetStore{instances: map[string]WidgetInstance{
+		"w1": {ID: "w1", DefinitionID: "admin.widget.bar_chart"},
+	}}
+	service := NewService(Options{WidgetStore: store})
+	if err := service.UpdateWidget(context.Background(), "w1", UpdateWidgetRequest{Configuration: map[string]any{"series": []string{}}}); err == nil {
+		t.Fatalf("expected validation error")
 	}
 }
 

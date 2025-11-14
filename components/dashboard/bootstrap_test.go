@@ -10,12 +10,14 @@ type memoryStore struct {
 	areas       map[string]WidgetAreaDefinition
 	defs        map[string]WidgetDefinition
 	assignCalls int
+	instances   map[string]WidgetInstance
 }
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		areas: map[string]WidgetAreaDefinition{},
-		defs:  map[string]WidgetDefinition{},
+		areas:     map[string]WidgetAreaDefinition{},
+		defs:      map[string]WidgetDefinition{},
+		instances: map[string]WidgetInstance{},
 	}
 }
 
@@ -36,7 +38,17 @@ func (m *memoryStore) EnsureDefinition(ctx context.Context, def WidgetDefinition
 }
 
 func (m *memoryStore) CreateInstance(ctx context.Context, input CreateWidgetInstanceInput) (WidgetInstance, error) {
-	return WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID}, nil
+	inst := WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID}
+	m.instances[inst.ID] = inst
+	return inst, nil
+}
+
+func (m *memoryStore) GetInstance(ctx context.Context, id string) (WidgetInstance, error) {
+	inst, ok := m.instances[id]
+	if !ok {
+		return WidgetInstance{}, errors.New("instance not found")
+	}
+	return inst, nil
 }
 
 func (m *memoryStore) DeleteInstance(context.Context, string) error { return nil }
@@ -44,6 +56,21 @@ func (m *memoryStore) DeleteInstance(context.Context, string) error { return nil
 func (m *memoryStore) AssignInstance(context.Context, AssignWidgetInput) error {
 	m.assignCalls++
 	return nil
+}
+
+func (m *memoryStore) UpdateInstance(ctx context.Context, input UpdateWidgetInstanceInput) (WidgetInstance, error) {
+	inst, ok := m.instances[input.InstanceID]
+	if !ok {
+		return WidgetInstance{}, errors.New("instance not found")
+	}
+	if input.Configuration != nil {
+		inst.Configuration = input.Configuration
+	}
+	if input.Metadata != nil {
+		inst.Metadata = input.Metadata
+	}
+	m.instances[input.InstanceID] = inst
+	return inst, nil
 }
 
 func (m *memoryStore) ReorderArea(context.Context, ReorderAreaInput) error { return nil }

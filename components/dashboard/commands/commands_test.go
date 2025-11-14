@@ -2,6 +2,7 @@ package commands
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	dashboard "github.com/goliatone/go-dashboard/components/dashboard"
@@ -79,6 +80,18 @@ func TestRefreshWidgetCommand(t *testing.T) {
 	}
 }
 
+func TestUpdateWidgetCommand(t *testing.T) {
+	service := &stubService{}
+	cmd := NewUpdateWidgetCommand(service, nil)
+	input := UpdateWidgetInput{WidgetID: "widget-1", Configuration: map[string]any{"title": "Updated"}}
+	if err := cmd.Execute(context.Background(), input); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if service.updateCalls != 1 {
+		t.Fatalf("expected update call")
+	}
+}
+
 func TestSaveLayoutPreferencesCommand(t *testing.T) {
 	service := &stubService{}
 	cmd := NewSaveLayoutPreferencesCommand(service, nil)
@@ -114,6 +127,7 @@ type stubService struct {
 	removeCalls   int
 	reorderCalls  int
 	refreshCalls  int
+	updateCalls   int
 	savePrefCalls int
 	lastOverrides dashboard.LayoutOverrides
 }
@@ -144,6 +158,11 @@ func (s *stubService) SavePreferences(ctx context.Context, viewer dashboard.View
 	return nil
 }
 
+func (s *stubService) UpdateWidget(ctx context.Context, widgetID string, req dashboard.UpdateWidgetRequest) error {
+	s.updateCalls++
+	return nil
+}
+
 type stubRegistry struct {
 	count int
 }
@@ -163,6 +182,7 @@ func (s *stubRegistry) Definitions() []dashboard.WidgetDefinition  { return nil 
 type stubStore struct {
 	ensureAreaCalls int
 	assignCalls     int
+	instances       map[string]dashboard.WidgetInstance
 }
 
 func newStubStore() *stubStore { return &stubStore{} }
@@ -177,7 +197,19 @@ func (s *stubStore) EnsureDefinition(context.Context, dashboard.WidgetDefinition
 }
 
 func (s *stubStore) CreateInstance(ctx context.Context, input dashboard.CreateWidgetInstanceInput) (dashboard.WidgetInstance, error) {
-	return dashboard.WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID}, nil
+	inst := dashboard.WidgetInstance{ID: input.DefinitionID + "-instance", DefinitionID: input.DefinitionID}
+	if s.instances == nil {
+		s.instances = map[string]dashboard.WidgetInstance{}
+	}
+	s.instances[inst.ID] = inst
+	return inst, nil
+}
+
+func (s *stubStore) GetInstance(ctx context.Context, id string) (dashboard.WidgetInstance, error) {
+	if inst, ok := s.instances[id]; ok {
+		return inst, nil
+	}
+	return dashboard.WidgetInstance{}, fmt.Errorf("instance %s not found", id)
 }
 
 func (s *stubStore) DeleteInstance(context.Context, string) error { return nil }
@@ -185,6 +217,21 @@ func (s *stubStore) DeleteInstance(context.Context, string) error { return nil }
 func (s *stubStore) AssignInstance(context.Context, dashboard.AssignWidgetInput) error {
 	s.assignCalls++
 	return nil
+}
+
+func (s *stubStore) UpdateInstance(ctx context.Context, input dashboard.UpdateWidgetInstanceInput) (dashboard.WidgetInstance, error) {
+	inst, ok := s.instances[input.InstanceID]
+	if !ok {
+		return dashboard.WidgetInstance{}, fmt.Errorf("instance %s not found", input.InstanceID)
+	}
+	if input.Configuration != nil {
+		inst.Configuration = input.Configuration
+	}
+	if input.Metadata != nil {
+		inst.Metadata = input.Metadata
+	}
+	s.instances[input.InstanceID] = inst
+	return inst, nil
 }
 
 func (s *stubStore) ReorderArea(context.Context, dashboard.ReorderAreaInput) error { return nil }

@@ -71,9 +71,15 @@ func (stubStore) EnsureDefinition(context.Context, core.WidgetDefinition) (bool,
 func (stubStore) CreateInstance(context.Context, core.CreateWidgetInstanceInput) (core.WidgetInstance, error) {
 	return core.WidgetInstance{}, nil
 }
+func (stubStore) GetInstance(context.Context, string) (core.WidgetInstance, error) {
+	return core.WidgetInstance{}, nil
+}
 func (stubStore) DeleteInstance(context.Context, string) error { return nil }
 func (stubStore) AssignInstance(context.Context, core.AssignWidgetInput) error {
 	return nil
+}
+func (stubStore) UpdateInstance(context.Context, core.UpdateWidgetInstanceInput) (core.WidgetInstance, error) {
+	return core.WidgetInstance{}, nil
 }
 func (stubStore) ReorderArea(context.Context, core.ReorderAreaInput) error { return nil }
 func (stubStore) ResolveArea(context.Context, core.ResolveAreaInput) (core.ResolvedArea, error) {
