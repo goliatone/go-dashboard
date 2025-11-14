@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,7 @@ type Options struct {
 	Telemetry       Telemetry
 	Areas           []string
 	Translation     TranslationService
+	ScriptNonce     func(context.Context) string
 }
 
 // Service orchestrates dashboard widgets on top of go-cms.
@@ -70,6 +72,12 @@ type AddWidgetRequest struct {
 	EndAt         *time.Time
 	UserID        string
 	Locale        string
+}
+
+// UpdateWidgetRequest captures mutable widget fields.
+type UpdateWidgetRequest struct {
+	Configuration map[string]any
+	Metadata      map[string]any
 }
 
 // AddWidget creates a widget instance and assigns it to an area.
@@ -151,6 +159,56 @@ func (s *Service) RemoveWidget(ctx context.Context, widgetID string) error {
 		return err
 	}
 	s.recordTelemetry(ctx, "dashboard.widget.remove", map[string]any{"widget_id": widgetID})
+	return nil
+}
+
+// UpdateWidget mutates widget configuration and/or metadata.
+func (s *Service) UpdateWidget(ctx context.Context, widgetID string, req UpdateWidgetRequest) error {
+	store, err := s.widgetStore()
+	if err != nil {
+		return err
+	}
+	if widgetID == "" {
+		return errors.New("dashboard: widget id is required")
+	}
+	current, err := store.GetInstance(ctx, widgetID)
+	if err != nil {
+		return err
+	}
+	updateInput := UpdateWidgetInstanceInput{InstanceID: widgetID}
+	if req.Configuration != nil {
+		if err := s.validateConfiguration(current.DefinitionID, req.Configuration); err != nil {
+			return err
+		}
+		updateInput.Configuration = req.Configuration
+	}
+	if req.Metadata != nil {
+		updateInput.Metadata = req.Metadata
+	}
+	updated, err := store.UpdateInstance(ctx, updateInput)
+	if err != nil {
+		return err
+	}
+	if updated.ID == "" {
+		updated = current
+		if req.Configuration != nil {
+			updated.Configuration = req.Configuration
+		}
+		if req.Metadata != nil {
+			updated.Metadata = req.Metadata
+		}
+	}
+	if updated.AreaCode == "" {
+		updated.AreaCode = current.AreaCode
+	}
+	event := WidgetEvent{AreaCode: updated.AreaCode, Instance: updated, Reason: "update"}
+	if err := s.opts.RefreshHook.WidgetUpdated(ctx, event); err != nil {
+		return err
+	}
+	s.recordTelemetry(ctx, "dashboard.widget.update", map[string]any{
+		"widget_id":     widgetID,
+		"definition_id": current.DefinitionID,
+	})
 	return nil
 }
 
@@ -293,10 +351,19 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 		if !ok || provider == nil {
 			continue
 		}
+		var options map[string]any
+		if s.opts.ScriptNonce != nil {
+			if nonce := strings.TrimSpace(s.opts.ScriptNonce(ctx)); nonce != "" {
+				options = map[string]any{
+					scriptNonceOptionKey: nonce,
+				}
+			}
+		}
 		data, err := provider.Fetch(ctx, WidgetContext{
 			Instance:   inst,
 			Viewer:     viewer,
 			Translator: s.opts.Translation,
+			Options:    options,
 		})
 		if err != nil {
 			s.recordTelemetry(ctx, "dashboard.widget.provider_error", map[string]any{
