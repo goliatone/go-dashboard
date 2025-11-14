@@ -21,6 +21,7 @@ require (
 	github.com/fasthttp/websocket v1.5.8 // indirect
 	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/gertd/go-pluralize v0.2.1 // indirect
+	github.com/go-echarts/go-echarts/v2 v2.5.0 // indirect
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/gofiber/contrib/websocket v1.3.4 // indirect
