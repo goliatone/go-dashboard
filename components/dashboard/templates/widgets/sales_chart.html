@@ -1,6 +1,1 @@
-<div class="widget widget--chart">
-  <header><h3>{{ T("dashboard.widget.sales_chart.title", locale, "Sales") }} ({{ widget.config.range or "30d" }})</h3></header>
-  <div class="widget__chart" data-points="{{ widget.data.series|join:"," }}">
-    <small>{{ T("dashboard.widget.sales_chart.note", locale, "Chart rendering handled on frontend.") }}</small>
-  </div>
-</div>
+{% include "widgets/echarts_chart.html" %}

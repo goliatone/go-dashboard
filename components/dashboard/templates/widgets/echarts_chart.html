@@ -1,0 +1,49 @@
+<div class="widget widget--echarts">
+  {% if widget.data.title or widget.data.subtitle %}
+  <header class="widget__header">
+    <h3>{{ widget.data.title or widget.config.title or "Chart" }}</h3>
+    {% if widget.data.subtitle or widget.config.subtitle %}
+    <p class="widget__subtitle">{{ widget.data.subtitle or widget.config.subtitle }}</p>
+    {% endif %}
+  </header>
+  {% endif %}
+
+  <div class="widget__content widget__content--chart">
+    {% if widget.data.chart_html %}
+      {{ widget.data.chart_html|safe }}
+    {% else %}
+      <div class="widget__empty">
+        <p>{{ T("dashboard.widget.chart.no_data", locale, "No chart data available.") }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if widget.config.footer_note %}
+  <footer class="widget__footer">
+    <small>{{ widget.config.footer_note }}</small>
+  </footer>
+  {% endif %}
+</div>
+
+<style>
+.widget--echarts {
+  overflow: hidden;
+}
+
+.widget__content--chart {
+  position: relative;
+  min-height: 320px;
+}
+
+.widget__content--chart > div {
+  width: 100% !important;
+}
+
+.widget__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  color: #94a3b8;
+}
+</style>
