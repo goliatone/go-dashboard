@@ -166,3 +166,26 @@ go-dashboard now mirrors go-cms localization flows:
 - `./taskfile dev:test` – full repository test run, useful before releasing.
 
 See `docs/TROUBLESHOOTING.md` if bootstrap, authorization, or provider issues appear during integration.
+
+## Chart Widgets
+
+Bar/line/pie widgets are rendered server-side through go-echarts. Check
+`docs/ECHARTS_WIDGETS.md` for configuration payloads, CSP guidance, and
+troubleshooting.
+
+- Sample app: `go run ./examples/goadmin` creates chart widgets in the demo dashboard.
+- Dynamic sales widgets are powered by `SalesChartProvider`, which can query any
+  repository that satisfies `SalesSeriesRepository` and optionally cache render
+  output via `dashboard.NewChartCache`.
+- Inspect the JSON layout via:
+  ```bash
+  curl -s http://localhost:9876/admin/dashboard/_layout \
+    | jq '.areas[].widgets[] | select(.definition|endswith("_chart"))'
+  ```
+- Design + roadmap live in `CHARTS_FEATURE.md` / `CHARTS_TSK.md`.
+
+### Performance & CSP tips
+
+- `./taskfile dashboard:serve:charts` enables Fiber’s compression middleware (`GO_DASHBOARD_ENABLE_GZIP=1`) and points go-echarts assets to `GO_DASHBOARD_ECHARTS_CDN` (defaults to jsDelivr) so you can preview gzipped payloads locally.
+- `./taskfile dashboard:bench:charts` runs the new `BenchmarkECharts*` targets to compare cached vs. uncached rendering cost.
+- Set `dashboard.Options.ScriptNonce` when building the service to stamp CSP-approved nonces onto every inline `<script>` emitted by go-echarts.
