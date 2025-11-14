@@ -106,6 +106,16 @@ function dashboard:generate {
     go generate ./components/dashboard/... ./pkg/dashboard/...
 }
 
+function dashboard:serve:charts {
+    local cdn=${GO_DASHBOARD_ECHARTS_CDN:-"https://cdn.jsdelivr.net/npm/echarts@5/dist/"}
+    GO_DASHBOARD_ENABLE_GZIP=1 GO_DASHBOARD_ECHARTS_CDN="${cdn}" go run ./examples/goadmin
+}
+
+function dashboard:bench:charts {
+    local gocache=${GOCACHE:-"$(pwd)/.gocache"}
+    GOCACHE="${gocache}" go test ./components/dashboard -run '^$' -bench ECharts -benchmem
+}
+
 function dashboard:widgets:scaffold {
     if [[ $# -eq 0 ]]; then
         echo "Usage: $0 dashboard:widgets:scaffold --code <code> --name <Name> --description <desc> --manifest <path> [flags...]"
