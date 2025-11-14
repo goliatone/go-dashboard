@@ -36,9 +36,17 @@ func (v *JSONSchemaValidator) Validate(def WidgetDefinition, config map[string]a
 	if err != nil {
 		return err
 	}
-	payload := config
-	if payload == nil {
+	var payload map[string]any
+	if config == nil {
 		payload = map[string]any{}
+	} else {
+		data, err := json.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("dashboard: marshal config for %s: %w", def.Code, err)
+		}
+		if err := json.Unmarshal(data, &payload); err != nil {
+			return fmt.Errorf("dashboard: normalize config for %s: %w", def.Code, err)
+		}
 	}
 	if err := schema.Validate(payload); err != nil {
 		return fmt.Errorf("dashboard: configuration for %s failed validation: %w", def.Code, err)
