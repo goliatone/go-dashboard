@@ -6,6 +6,7 @@ state-changing workflow exposed by go-dashboard:
 - `SeedDashboardCommand` bootstraps widget areas, definitions, and optional layouts.
 - `AssignWidgetCommand`, `RemoveWidgetCommand`, and `ReorderWidgetsCommand`
   encapsulate CRUD operations so HTTP/WebSocket transports stay thin.
+- `UpdateWidgetCommand` mutates widget configuration/metadata without reassigning it.
 - `RefreshWidgetCommand` fans out events via the configured `RefreshHook`.
 
 Each command records telemetry and depends only on interfaces (`dashboard.Service`,
