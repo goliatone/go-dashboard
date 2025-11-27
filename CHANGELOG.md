@@ -1,5 +1,32 @@
 # Changelog
 
+# [0.2.0](https://github.com/goliatone/go-dashboard/compare/v0.1.0...v0.2.0) - (2025-11-27)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.2.0 ([e4d1bf5](https://github.com/goliatone/go-dashboard/commit/e4d1bf5e5c7b992ac83a65241c8b7d363443b708))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Theme support to dashboard ([996893d](https://github.com/goliatone/go-dashboard/commit/996893d5a793e3f541f440b6b43a7f485d8dd2bc))  - (goliatone)
+- Theme selector to layout ([423139b](https://github.com/goliatone/go-dashboard/commit/423139be9204136adc8691f05ce5cc562fff5171))  - (goliatone)
+- Update dashboard ([d1ebf15](https://github.com/goliatone/go-dashboard/commit/d1ebf1500cd4b22064fd11102464270a69299943))  - (goliatone)
+- Theme provider and loader ([7ecfd70](https://github.com/goliatone/go-dashboard/commit/7ecfd70d3c7812bd6e3d7ef0e6c96413f5413f7e))  - (goliatone)
+- Theme management for charts ([06f4c81](https://github.com/goliatone/go-dashboard/commit/06f4c81615076d6f265dcd221059033cdb444a6a))  - (goliatone)
+- Theme manager ([d8ca5eb](https://github.com/goliatone/go-dashboard/commit/d8ca5eb386783549bccde3796a3290c255587d87))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.1.0 ([d5ca386](https://github.com/goliatone/go-dashboard/commit/d5ca3866cc2e285b75d39527d5cbae2acefeb2a4))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update example ([65ed35a](https://github.com/goliatone/go-dashboard/commit/65ed35add5c7fbf0374471ebfa1ec876552a3243))  - (goliatone)
+- Update readme ([1169011](https://github.com/goliatone/go-dashboard/commit/1169011d52eceb378c6da82bdcfd96e1f7b7d714))  - (goliatone)
+- Update tests ([423034c](https://github.com/goliatone/go-dashboard/commit/423034cd1077d0f63a0c5c3a78e126da144ec395))  - (goliatone)
+- Update docs ([9912a20](https://github.com/goliatone/go-dashboard/commit/9912a2035f2a3a5ac9572bd5badc875e9b49bf3a))  - (goliatone)
+- Udpate readme ([19674be](https://github.com/goliatone/go-dashboard/commit/19674be5ac820aefec723d802986857573bb6a8f))  - (goliatone)
+
 # [0.1.0](https://github.com/goliatone/go-dashboard/tree/v0.1.0) - (2025-11-14)
 
 ## <!-- 1 -->🐛 Bug Fixes
