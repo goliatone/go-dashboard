@@ -30,6 +30,8 @@ type Options struct {
 	ConfigValidator ConfigValidator
 	RefreshHook     RefreshHook
 	Telemetry       Telemetry
+	ThemeProvider   ThemeProvider
+	ThemeSelector   ThemeSelectorFunc
 	Areas           []string
 	Translation     TranslationService
 	ScriptNonce     func(context.Context) string
@@ -246,11 +248,15 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 	if err != nil {
 		return Layout{}, err
 	}
+	theme := s.resolveTheme(ctx, viewer)
 	overrides, err := s.opts.PreferenceStore.LayoutOverrides(ctx, viewer)
 	if err != nil {
 		return Layout{}, err
 	}
-	layout := Layout{Areas: make(map[string][]WidgetInstance)}
+	layout := Layout{
+		Areas: make(map[string][]WidgetInstance),
+		Theme: theme,
+	}
 	for _, area := range s.areaList() {
 		resolved, err := store.ResolveArea(ctx, ResolveAreaInput{
 			AreaCode: area,
@@ -263,7 +269,7 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 		for i := range resolved.Widgets {
 			resolved.Widgets[i].AreaCode = area
 		}
-		filtered := s.filterAuthorized(ctx, viewer, resolved.Widgets)
+		filtered := s.filterAuthorized(ctx, viewer, theme, resolved.Widgets)
 		ordered := applyOrderOverride(filtered, overrides.AreaOrder[area])
 		withLayout := applyRowMetadata(ordered, overrides.AreaRows[area])
 		layout.Areas[area] = applyHiddenFilter(withLayout, overrides.HiddenWidgets)
@@ -280,6 +286,7 @@ func (s *Service) ResolveArea(ctx context.Context, viewer ViewerContext, areaCod
 	if err != nil {
 		return ResolvedArea{}, err
 	}
+	theme := s.resolveTheme(ctx, viewer)
 	resolved, err := store.ResolveArea(ctx, ResolveAreaInput{
 		AreaCode: areaCode,
 		Audience: viewer.Roles,
@@ -288,7 +295,7 @@ func (s *Service) ResolveArea(ctx context.Context, viewer ViewerContext, areaCod
 	if err != nil {
 		return ResolvedArea{}, err
 	}
-	resolved.Widgets = s.filterAuthorized(ctx, viewer, resolved.Widgets)
+	resolved.Widgets = s.filterAuthorized(ctx, viewer, theme, resolved.Widgets)
 	overrides, err := s.opts.PreferenceStore.LayoutOverrides(ctx, viewer)
 	if err == nil {
 		ordered := applyOrderOverride(resolved.Widgets, overrides.AreaOrder[areaCode])
@@ -327,7 +334,27 @@ func (s *Service) areaList() []string {
 	return defaultAreas
 }
 
-func (s *Service) filterAuthorized(ctx context.Context, viewer ViewerContext, widgets []WidgetInstance) []WidgetInstance {
+func (s *Service) resolveTheme(ctx context.Context, viewer ViewerContext) *ThemeSelection {
+	if s.opts.ThemeProvider == nil {
+		return nil
+	}
+	selector := ThemeSelector{}
+	if s.opts.ThemeSelector != nil {
+		selector = s.opts.ThemeSelector(ctx, viewer)
+	}
+	theme, err := s.opts.ThemeProvider.SelectTheme(ctx, selector)
+	if err != nil {
+		s.recordTelemetry(ctx, "dashboard.theme.resolve_error", map[string]any{
+			"theme":   selector.Name,
+			"variant": selector.Variant,
+			"error":   err.Error(),
+		})
+		return nil
+	}
+	return cloneThemeSelection(theme)
+}
+
+func (s *Service) filterAuthorized(ctx context.Context, viewer ViewerContext, theme *ThemeSelection, widgets []WidgetInstance) []WidgetInstance {
 	if len(widgets) == 0 {
 		return widgets
 	}
@@ -337,10 +364,10 @@ func (s *Service) filterAuthorized(ctx context.Context, viewer ViewerContext, wi
 			filtered = append(filtered, w)
 		}
 	}
-	return s.attachProviderData(ctx, viewer, filtered)
+	return s.attachProviderData(ctx, viewer, theme, filtered)
 }
 
-func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, widgets []WidgetInstance) []WidgetInstance {
+func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, theme *ThemeSelection, widgets []WidgetInstance) []WidgetInstance {
 	if len(widgets) == 0 || s.opts.Providers == nil {
 		return widgets
 	}
@@ -364,6 +391,7 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 			Viewer:     viewer,
 			Translator: s.opts.Translation,
 			Options:    options,
+			Theme:      theme,
 		})
 		if err != nil {
 			s.recordTelemetry(ctx, "dashboard.widget.provider_error", map[string]any{
