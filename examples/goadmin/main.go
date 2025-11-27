@@ -110,11 +110,47 @@ func (d *demoTranslationService) Translate(_ context.Context, key, locale string
 
 var _ dashboard.TranslationService = (*demoTranslationService)(nil)
 
+type staticThemeProvider struct {
+	selection *dashboard.ThemeSelection
+}
+
+func (p *staticThemeProvider) SelectTheme(context.Context, dashboard.ThemeSelector) (*dashboard.ThemeSelection, error) {
+	return p.selection, nil
+}
+
+func demoThemeSelection() *dashboard.ThemeSelection {
+	return &dashboard.ThemeSelection{
+		Name:    "ops-night",
+		Variant: "dark",
+		Tokens: map[string]string{
+			"--dashboard-surface":    "#0b1220",
+			"--dashboard-card":       "#111827",
+			"--dashboard-foreground": "#e2e8f0",
+			"--dashboard-muted":      "#94a3b8",
+			"--dashboard-accent":     "#22d3ee",
+		},
+		Assets: dashboard.ThemeAssets{
+			Values: map[string]string{
+				"logo": "/assets/logo.svg",
+			},
+			Prefix: "https://cdn.goadmin.dev",
+		},
+		Templates: map[string]string{
+			"dashboard.layout": "dashboard.html",
+		},
+	}
+}
+
 func main() {
 	ctx := context.Background()
 
 	translator := newDemoTranslationService()
-	service, registry, store := setupDemoDashboard(ctx, translator)
+	themeSelection := demoThemeSelection()
+	themeProvider := &staticThemeProvider{selection: themeSelection}
+	themeSelector := func(context.Context, dashboard.ViewerContext) dashboard.ThemeSelector {
+		return dashboard.ThemeSelector{Name: themeSelection.Name, Variant: themeSelection.Variant}
+	}
+	service, registry, store := setupDemoDashboard(ctx, translator, themeProvider, themeSelector)
 
 	renderer := newSampleRenderer()
 	controller := dashboard.NewController(dashboard.ControllerOptions{
@@ -161,9 +197,11 @@ func main() {
 	admin, err := goadmin.New(goadmin.Config{
 		EnableDashboard: true,
 		Service: dashboardpkg.NewService(dashboard.Options{
-			WidgetStore: store,
-			Providers:   registry,
-			Translation: translator,
+			WidgetStore:   store,
+			Providers:     registry,
+			Translation:   translator,
+			ThemeProvider: themeProvider,
+			ThemeSelector: themeSelector,
 		}),
 		MenuBuilder: &loggingMenuBuilder{},
 	})
@@ -448,7 +486,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
-func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
+func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
 
@@ -498,9 +536,11 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 	}))
 
 	service := dashboard.NewService(dashboard.Options{
-		WidgetStore: store,
-		Providers:   registry,
-		Translation: translator,
+		WidgetStore:   store,
+		Providers:     registry,
+		Translation:   translator,
+		ThemeProvider: themeProvider,
+		ThemeSelector: themeSelector,
 	})
 	defaultViewer := dashboard.ViewerContext{UserID: sampleViewerID, Locale: "en"}
 
