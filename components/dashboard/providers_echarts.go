@@ -42,6 +42,7 @@ type EChartsProvider struct {
 	themeResolver ThemeResolver
 	assetsHost    string
 	showTitle     bool
+	customTheme   bool
 }
 
 // EChartsProviderOption customizes provider behavior.
@@ -58,6 +59,7 @@ func WithChartCache(cache RenderCache) EChartsProviderOption {
 func WithChartTheme(theme string) EChartsProviderOption {
 	return func(p *EChartsProvider) {
 		p.theme = theme
+		p.customTheme = true
 	}
 }
 
@@ -136,7 +138,7 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 
 	renderCtx := chartRenderContext{
 		Viewer: meta.Viewer,
-		Theme:  p.resolveTheme(meta.Viewer),
+		Theme:  p.resolveTheme(meta.Viewer, meta.Theme),
 	}
 	if override := strings.TrimSpace(stringValue(cfg["theme"], "")); override != "" {
 		renderCtx.Theme = override
@@ -392,16 +394,45 @@ func (p *EChartsProvider) globalChartOptions(title, subtitle string, ctx chartRe
 	return optsList
 }
 
-func (p *EChartsProvider) resolveTheme(viewer ViewerContext) string {
+func (p *EChartsProvider) resolveTheme(viewer ViewerContext, selection *ThemeSelection) string {
 	if p.themeResolver != nil {
 		if theme := p.themeResolver(viewer); theme != "" {
 			return theme
 		}
 	}
+	if p.customTheme && p.theme != "" {
+		return p.theme
+	}
+	if derived := chartThemeFromSelection(selection); derived != "" {
+		if selection != nil && selection.ChartTheme == "" {
+			selection.ChartTheme = derived
+		}
+		return derived
+	}
 	if p.theme != "" {
 		return p.theme
 	}
-	return types.ThemeWesteros
+	return string(types.ThemeWesteros)
+}
+
+func chartThemeFromSelection(selection *ThemeSelection) string {
+	if selection == nil {
+		return ""
+	}
+	if selection.ChartTheme != "" {
+		return selection.ChartTheme
+	}
+	variant := strings.TrimSpace(strings.ToLower(selection.Variant))
+	if variant == "" {
+		return ""
+	}
+	if strings.Contains(variant, "dark") {
+		return string(types.ThemeWonderland)
+	}
+	if strings.Contains(variant, "light") {
+		return string(types.ThemeWesteros)
+	}
+	return ""
 }
 
 func toBarData(points []ChartPoint) []opts.BarData {
