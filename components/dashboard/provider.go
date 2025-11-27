@@ -23,6 +23,7 @@ type WidgetContext struct {
 	Viewer     ViewerContext
 	Options    map[string]any
 	Translator TranslationService
+	Theme      *ThemeSelection
 }
 
 // WidgetData is an opaque payload passed to templates.
