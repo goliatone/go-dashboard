@@ -46,3 +46,27 @@ names so host applications can theme them without editing Go code:
 Override these selectors from your admin stylesheet or provide an alternative
 renderer via `ControllerOptions.Template` if you need a completely different
 layout.
+
+## Theming
+
+- `dashboard.Service` accepts an optional go-theme-compatible `ThemeProvider`
+  plus `ThemeSelectorFunc` on `dashboard.Options`. When provided, the resolved
+  `ThemeSelection` is attached to layout payloads, widget contexts, and template
+  data (`theme.tokens`, `theme.css_vars_inline`, `theme.assets`, `theme.templates`).
+- ECharts providers automatically derive a default chart theme from the selected
+  variant (dark -> wonderland, light -> westeros); per-widget `theme` config and
+  `WithChartTheme/WithChartThemeResolver` still win.
+- The HTML payload exposes `theme` so custom renderers can wire CSS variables or
+  theme-specific partials; when no provider is configured, behavior is unchanged.
+
+```go
+themeProvider := loadThemeProviderSomehow() // e.g., go-theme registry adapter
+svc := dashboard.NewService(dashboard.Options{
+    WidgetStore:   store,
+    Providers:     registry,
+    ThemeProvider: themeProvider,
+    ThemeSelector: func(ctx context.Context, viewer dashboard.ViewerContext) dashboard.ThemeSelector {
+        return dashboard.ThemeSelector{Name: "admin", Variant: "dark"}
+    },
+})
+```
