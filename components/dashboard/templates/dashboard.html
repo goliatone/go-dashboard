@@ -1,7 +1,22 @@
 {% extends "layouts/base.html" %}
 
 {% block content %}
-<div class="dashboard">
+{% if theme and theme.css_vars_inline %}
+<style>
+:root { {{ theme.css_vars_inline|safe }} }
+.dashboard {
+  background: var(--dashboard-surface, inherit);
+  color: var(--dashboard-foreground, inherit);
+}
+.dashboard__header h1 {
+  color: var(--dashboard-accent, inherit);
+}
+.dashboard__header p {
+  color: var(--dashboard-muted, inherit);
+}
+</style>
+{% endif %}
+<div class="dashboard" {% if theme and theme.variant %}data-theme="{{ theme.variant }}"{% endif %}>
   <div class="dashboard__header">
     <h1>{{ T("dashboard.page.title", locale, title or "Dashboard") }}</h1>
     {% if description %}
