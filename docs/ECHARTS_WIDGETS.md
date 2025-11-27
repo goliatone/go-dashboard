@@ -87,6 +87,10 @@ deployment recommendations.
 - Customize themes per-viewer by supplying `dashboard.WithChartThemeResolver`
   when constructing `EChartsProvider`, or per-widget via the `theme` config
   field. CSS overrides remain available via `.widget--echarts` classes.
+- When the dashboard service is configured with a go-theme `ThemeProvider` +
+  selector, ECharts providers derive a default theme from the selected variant
+  (e.g., dark -> wonderland, light -> westeros). Per-widget `theme` overrides
+  and `WithChartTheme/WithChartThemeResolver` still take precedence.
 
 ---
 
