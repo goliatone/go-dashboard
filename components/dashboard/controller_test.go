@@ -141,6 +141,55 @@ func TestLayoutPayloadIncludesLocale(t *testing.T) {
 	}
 }
 
+func TestLayoutPayloadIncludesTheme(t *testing.T) {
+	theme := &ThemeSelection{
+		Name:    "demo",
+		Variant: "dark",
+		Tokens: map[string]string{
+			"--color-primary": "#fff",
+		},
+		Assets: ThemeAssets{
+			Values: map[string]string{
+				"logo": "img/logo.svg",
+			},
+			Prefix: "https://cdn.example.com",
+		},
+	}
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats"},
+				},
+			},
+			Theme: theme,
+		},
+	}
+	controller := NewController(ControllerOptions{Service: service})
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	rawTheme, ok := payload["theme"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected theme payload included in response")
+	}
+	if rawTheme["variant"] != "dark" {
+		t.Fatalf("expected theme variant propagated, got %#v", rawTheme["variant"])
+	}
+	assets, ok := rawTheme["assets"].(map[string]string)
+	if !ok {
+		t.Fatalf("expected resolved assets map, got %T", rawTheme["assets"])
+	}
+	if assets["logo"] != "https://cdn.example.com/img/logo.svg" {
+		t.Fatalf("expected asset URL resolved with prefix, got %s", assets["logo"])
+	}
+	widgets := payload["areas"].(map[string]any)["main"].(map[string]any)["widgets"].([]map[string]any)
+	if widgets[0]["theme"] == nil {
+		t.Fatalf("expected widget payload to include theme reference")
+	}
+}
+
 func TestTemplatePathForDefinition(t *testing.T) {
 	tests := map[string]string{
 		"admin.widget.user_stats":       "widgets/user_stats.html",

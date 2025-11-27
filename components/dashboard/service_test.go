@@ -180,6 +180,71 @@ func TestConfigureLayoutPropagatesLocale(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutAttachesThemeSelection(t *testing.T) {
+	selection := &ThemeSelection{
+		Name:    "admin",
+		Variant: "dark",
+		Tokens: map[string]string{
+			"--color-primary": "#111827",
+		},
+		Templates: map[string]string{
+			"dashboard.layout": "themes/admin/dashboard.html",
+		},
+		Assets: ThemeAssets{
+			Values: map[string]string{"logo": "/static/logo.svg"},
+			Prefix: "https://cdn.example.com",
+		},
+	}
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{ID: "w1", DefinitionID: "custom.widget.theme"},
+			},
+		},
+	}
+	registry := NewRegistry()
+	if err := registry.RegisterDefinition(WidgetDefinition{Code: "custom.widget.theme"}); err != nil {
+		t.Fatalf("RegisterDefinition returned error: %v", err)
+	}
+	var receivedTheme *ThemeSelection
+	if err := registry.RegisterProvider("custom.widget.theme", ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+		receivedTheme = meta.Theme
+		return WidgetData{}, nil
+	})); err != nil {
+		t.Fatalf("RegisterProvider returned error: %v", err)
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		Providers:       registry,
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		ThemeProvider: &stubThemeProvider{
+			selection: selection,
+		},
+		ThemeSelector: func(context.Context, ViewerContext) ThemeSelector {
+			return ThemeSelector{Name: "admin", Variant: "dark"}
+		},
+	})
+	layout, err := service.ConfigureLayout(context.Background(), ViewerContext{UserID: "user-theme"})
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	if layout.Theme == nil {
+		t.Fatalf("expected theme to be populated on layout")
+	}
+	if layout.Theme.Name != "admin" || layout.Theme.Variant != "dark" {
+		t.Fatalf("unexpected theme selection: %#v", layout.Theme)
+	}
+	if receivedTheme == nil || receivedTheme.Variant != "dark" {
+		t.Fatalf("expected provider to receive theme selection, got %#v", receivedTheme)
+	}
+	if receivedTheme.Assets.AssetURL("logo") != "https://cdn.example.com/static/logo.svg" {
+		t.Fatalf("expected asset resolver to honor prefix, got %s", receivedTheme.Assets.AssetURL("logo"))
+	}
+	if receivedTheme.Tokens["--color-primary"] != "#111827" {
+		t.Fatalf("expected tokens propagated to provider")
+	}
+}
+
 func TestAddWidgetEmitsRefreshHook(t *testing.T) {
 	store := &fakeWidgetStore{
 		createInstanceFn: func(input CreateWidgetInstanceInput) (WidgetInstance, error) {
@@ -386,6 +451,14 @@ func (h *collectingHook) WidgetUpdated(context.Context, WidgetEvent) error {
 }
 
 var _ RefreshHook = (*collectingHook)(nil)
+
+type stubThemeProvider struct {
+	selection *ThemeSelection
+}
+
+func (s *stubThemeProvider) SelectTheme(context.Context, ThemeSelector) (*ThemeSelection, error) {
+	return s.selection, nil
+}
 
 func TestPreferenceStoreRequiresUserID(t *testing.T) {
 	store := NewInMemoryPreferenceStore()

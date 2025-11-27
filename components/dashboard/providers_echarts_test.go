@@ -123,6 +123,41 @@ func TestEChartsProviderThemeOverride(t *testing.T) {
 	assert.Equal(t, "wonderland", data["theme"])
 }
 
+func TestEChartsProviderThemeSelectionDefault(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar")
+	ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":  "Theme From Selection",
+		"x_axis": []string{"A", "B"},
+		"series": []map[string]any{
+			{"name": "Series", "data": []float64{1, 2}},
+		},
+	})
+	ctx.Theme = &ThemeSelection{Variant: "dark"}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+
+	assert.Equal(t, string(types.ThemeWonderland), data["theme"])
+	require.NotNil(t, ctx.Theme)
+	assert.Equal(t, string(types.ThemeWonderland), ctx.Theme.ChartTheme)
+}
+
+func TestEChartsProviderCustomThemeBeatsSelection(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar", WithChartTheme(string(types.ThemeWalden)))
+	ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":  "Explicit Theme",
+		"x_axis": []string{"A"},
+		"series": []map[string]any{{"name": "Series", "data": []float64{1}}},
+	})
+	ctx.Theme = &ThemeSelection{Variant: "dark"}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, string(types.ThemeWalden), data["theme"])
+}
+
 func TestEChartsProviderSanitizesStrings(t *testing.T) {
 	t.Parallel()
 	provider := NewEChartsProvider("bar")
