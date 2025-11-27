@@ -58,31 +58,36 @@ func (c *Controller) Render(ctx context.Context, viewer ViewerContext) (Layout, 
 }
 
 func (c *Controller) payloadFromLayout(layout Layout) map[string]any {
+	theme := themePayload(layout.Theme)
 	areaMap := make(map[string]any, len(c.areas))
 	ordered := make([]map[string]any, 0, len(c.areas))
 	for _, section := range c.areas {
-		payload := c.areaPayload(section.Code, layout.Areas[section.Code])
+		payload := c.areaPayload(section.Code, layout.Areas[section.Code], theme)
 		payload["slot"] = section.Slot
 		areaMap[section.Slot] = payload
 		ordered = append(ordered, payload)
 	}
 
-	return map[string]any{
+	response := map[string]any{
 		"title":         "Dashboard",
 		"description":   "Admin overview",
 		"areas":         areaMap,
 		"ordered_areas": ordered,
 	}
+	if theme != nil {
+		response["theme"] = theme
+	}
+	return response
 }
 
-func (c *Controller) areaPayload(code string, widgets []WidgetInstance) map[string]any {
+func (c *Controller) areaPayload(code string, widgets []WidgetInstance, theme map[string]any) map[string]any {
 	return map[string]any{
 		"code":    code,
-		"widgets": c.widgetsPayload(widgets),
+		"widgets": c.widgetsPayload(widgets, theme),
 	}
 }
 
-func (c *Controller) widgetsPayload(instances []WidgetInstance) []map[string]any {
+func (c *Controller) widgetsPayload(instances []WidgetInstance, theme map[string]any) []map[string]any {
 	if len(instances) == 0 {
 		return nil
 	}
@@ -100,6 +105,7 @@ func (c *Controller) widgetsPayload(instances []WidgetInstance) []map[string]any
 			"data":       data,
 			"area_code":  inst.AreaCode,
 			"metadata":   inst.Metadata,
+			"theme":      theme,
 		})
 	}
 	return widgets
@@ -139,6 +145,41 @@ func (c *Controller) payloadForViewer(ctx context.Context, viewer ViewerContext)
 // LayoutPayload returns a JSON-ready payload with snake_case keys for the viewer.
 func (c *Controller) LayoutPayload(ctx context.Context, viewer ViewerContext) (map[string]any, error) {
 	return c.payloadForViewer(ctx, viewer)
+}
+
+func themePayload(selection *ThemeSelection) map[string]any {
+	if selection == nil {
+		return nil
+	}
+	payload := map[string]any{}
+	if selection.Name != "" {
+		payload["name"] = selection.Name
+	}
+	if selection.Variant != "" {
+		payload["variant"] = selection.Variant
+	}
+	if len(selection.Tokens) > 0 {
+		payload["tokens"] = selection.Tokens
+	}
+	if cssVars := selection.CSSVariables(); len(cssVars) > 0 {
+		payload["css_vars"] = cssVars
+	}
+	if inline := selection.CSSVariablesInline(); inline != "" {
+		payload["css_vars_inline"] = inline
+	}
+	if selection.Assets.Prefix != "" {
+		payload["asset_prefix"] = selection.Assets.Prefix
+	}
+	if assets := selection.Assets.Resolved(); len(assets) > 0 {
+		payload["assets"] = assets
+	}
+	if len(selection.Templates) > 0 {
+		payload["templates"] = selection.Templates
+	}
+	if selection.ChartTheme != "" {
+		payload["chart_theme"] = selection.ChartTheme
+	}
+	return payload
 }
 
 func templatePathFor(definition string) string {
