@@ -149,6 +149,7 @@ type ViewerContext struct {
 // Layout describes the resolved widget instances per dashboard area.
 type Layout struct {
 	Areas map[string][]WidgetInstance
+	Theme *ThemeSelection
 }
 
 // WidgetEvent describes changes that transports might care about.
