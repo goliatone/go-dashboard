@@ -78,6 +78,45 @@ func TestRegisterHTMLRoute(t *testing.T) {
 	}
 }
 
+func TestAssetsRouteServesEmbeddedFiles(t *testing.T) {
+	server := router.NewFiberAdapter()
+	appRouter := server.Router()
+	layout := dashboard.Layout{
+		Areas: map[string][]dashboard.WidgetInstance{
+			"admin.dashboard.main": nil,
+		},
+	}
+	service := &stubLayoutResolver{layout: layout}
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service:  service,
+		Renderer: &stubRenderer{},
+	})
+	cfg := Config[*fiber.App]{
+		Router:     appRouter,
+		Controller: controller,
+		API:        noopExecutor{},
+	}
+	if err := Register(cfg); err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+	fiberAdapter, ok := server.(interface {
+		WrappedRouter() *fiber.App
+	})
+	if !ok {
+		t.Fatalf("adapter does not expose wrapped router")
+	}
+	resp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/dashboard/assets/echarts/echarts.min.js", nil))
+	if err != nil {
+		t.Fatalf("asset request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected embedded assets to be served, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct == "" {
+		t.Fatalf("expected content type for asset response")
+	}
+}
+
 func TestDefaultViewerResolverUsesAcceptLanguage(t *testing.T) {
 	server := router.NewFiberAdapter()
 	appRouter := server.Router()
