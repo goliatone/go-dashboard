@@ -1,5 +1,26 @@
 # Changelog
 
+# [0.3.0](https://github.com/goliatone/go-dashboard/compare/v0.2.0...v0.3.0) - (2025-12-02)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.3.0 ([5063a9a](https://github.com/goliatone/go-dashboard/commit/5063a9a575388659bdf74b315c0795db0f06dfbf))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Routes to serve assets ([bd756dd](https://github.com/goliatone/go-dashboard/commit/bd756dd06e6211c709d62c9209b6ef0d4e41c0fe))  - (goliatone)
+- Bundle echarts in binary ([bd89d74](https://github.com/goliatone/go-dashboard/commit/bd89d749a493099aae43bc728c41f40444861662))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.2.0 ([de433e3](https://github.com/goliatone/go-dashboard/commit/de433e3328779c09548ec86df79028a6691f41fd))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([77c3a3f](https://github.com/goliatone/go-dashboard/commit/77c3a3fa5ca3794953b2f1cf96c5cf0bd29e946d))  - (goliatone)
+- Update task ([286799e](https://github.com/goliatone/go-dashboard/commit/286799e8fd450db7e98fa987272cd526a03c3aa3))  - (goliatone)
+- Update tests ([a935f75](https://github.com/goliatone/go-dashboard/commit/a935f75c845618041aedb045ad757cad1dbcb3f4))  - (goliatone)
+
 # [0.2.0](https://github.com/goliatone/go-dashboard/compare/v0.1.0...v0.2.0) - (2025-11-27)
 
 ## <!-- 13 -->📦 Bumps
