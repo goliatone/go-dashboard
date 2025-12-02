@@ -64,7 +64,7 @@ expects a single dataset.
 ## CSP & Security
 
 - go-echarts emits inline `<script>` blocks. Configure your web server with a
-- script nonce (preferred) or allowlist `https://cdn.jsdelivr.net` when using
+  script nonce (preferred) or allowlist the ECharts CDN origin when using
   `opts.Initialization{AssetsHost: ...}`. Provide `dashboard.Options.ScriptNonce`
   when constructing the service so every inline script automatically receives
   the nonce attribute.
@@ -74,8 +74,25 @@ expects a single dataset.
 - Providers run with the standard `ViewerContext`. Continue to enforce
   viewer/role-based access in custom providers before fetching sensitive data.
 
-See `CHARTS_FEATURE.md` “Challenge 5: Security, CSP, and Data Isolation” for
+See `CHARTS_FEATURE.md` "Challenge 5: Security, CSP, and Data Isolation" for
 deployment recommendations.
+
+### Assets & Dynamic Injection
+
+- **Bundled by default:** go-dashboard now ships the ECharts runtime + themes
+  under `/dashboard/assets/echarts/` and serves them via the go-router adapter.
+  The generated chart HTML points here out of the box.
+- **Override when needed:** set `GO_DASHBOARD_ECHARTS_CDN` or pass
+  `dashboard.WithChartAssetsHost(...)` to point to a CDN/self-hosted bucket.
+- **Non go-router hosts:** mount `dashboard.EChartsAssetsHandler` (or
+  `EChartsAssetsFS` with your framework’s static middleware) at
+  `/dashboard/assets/echarts/` so the default URLs resolve.
+- **JSON API / innerHTML:** if you inject chart HTML client-side, either rely on
+  the bundled same-origin assets or preload the runtime in your page shell before
+  calling `innerHTML`. Programmatic script loading (creating `<script>` nodes and
+  awaiting `onload`) also avoids `echarts is not defined` races.
+- **Update assets:** run `./taskfile dashboard:assets:echarts` to refresh the
+  embedded runtime/themes from the upstream go-echarts assets bundle.
 
 ---
 
