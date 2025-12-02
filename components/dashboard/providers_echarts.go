@@ -73,17 +73,18 @@ func WithChartThemeResolver(resolver ThemeResolver) EChartsProviderOption {
 // WithChartAssetsHost rewrites the assets host so ECharts JS loads from a CDN.
 func WithChartAssetsHost(host string) EChartsProviderOption {
 	return func(p *EChartsProvider) {
-		p.assetsHost = host
+		p.assetsHost = ensureTrailingSlash(host)
 	}
 }
 
 // NewEChartsProvider builds a provider for a specific chart type.
 func NewEChartsProvider(chartType string, opts ...EChartsProviderOption) *EChartsProvider {
 	p := &EChartsProvider{
-		chartType: strings.ToLower(chartType),
-		cache:     sharedChartCache,
-		theme:     types.ThemeWesteros,
-		showTitle: false,
+		chartType:  strings.ToLower(chartType),
+		cache:      sharedChartCache,
+		theme:      types.ThemeWesteros,
+		showTitle:  false,
+		assetsHost: DefaultEChartsAssetsHost(),
 	}
 	for _, opt := range opts {
 		opt(p)
