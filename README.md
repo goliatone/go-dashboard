@@ -185,6 +185,7 @@ troubleshooting.
 
 ### Performance & CSP tips
 
-- `./taskfile dashboard:serve:charts` enables Fiber’s compression middleware (`GO_DASHBOARD_ENABLE_GZIP=1`) and points go-echarts assets to `GO_DASHBOARD_ECHARTS_CDN` (defaults to jsDelivr) so you can preview gzipped payloads locally.
+- `./taskfile dashboard:serve:charts` enables Fiber’s compression middleware (`GO_DASHBOARD_ENABLE_GZIP=1`) and serves the bundled ECharts assets; set `GO_DASHBOARD_ECHARTS_CDN` to point at a CDN/self-hosted bucket instead.
+- `./taskfile dashboard:assets:echarts` refreshes the embedded ECharts runtime + themes from the upstream go-echarts asset bundle.
 - `./taskfile dashboard:bench:charts` runs the new `BenchmarkECharts*` targets to compare cached vs. uncached rendering cost.
 - Set `dashboard.Options.ScriptNonce` when building the service to stamp CSP-approved nonces onto every inline `<script>` emitted by go-echarts.
