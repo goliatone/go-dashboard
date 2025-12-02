@@ -107,8 +107,25 @@ function dashboard:generate {
 }
 
 function dashboard:serve:charts {
-    local cdn=${GO_DASHBOARD_ECHARTS_CDN:-"https://cdn.jsdelivr.net/npm/echarts@5/dist/"}
-    GO_DASHBOARD_ENABLE_GZIP=1 GO_DASHBOARD_ECHARTS_CDN="${cdn}" go run ./examples/goadmin
+    local cdn=${GO_DASHBOARD_ECHARTS_CDN:-""}
+    if [[ -n "${cdn}" ]]; then
+        GO_DASHBOARD_ENABLE_GZIP=1 GO_DASHBOARD_ECHARTS_CDN="${cdn}" go run ./examples/goadmin
+    else
+        GO_DASHBOARD_ENABLE_GZIP=1 go run ./examples/goadmin
+    fi
+}
+
+function dashboard:assets:echarts {
+    local base=${GO_DASHBOARD_ECHARTS_ASSETS_BASE:-"https://go-echarts.github.io/go-echarts-assets/assets"}
+    local dest="components/dashboard/assets/echarts"
+    mkdir -p "${dest}/themes"
+    lgr I "Downloading ECharts runtime from ${base}"
+    curl -fL "${base}/echarts.min.js" -o "${dest}/echarts.min.js"
+    local themes=(chalk essos infographic macarons purple-passion roma romantic shine vintage walden westeros wonderland)
+    for theme in "${themes[@]}"; do
+        curl -fL "${base}/themes/${theme}.js" -o "${dest}/themes/${theme}.js"
+    done
+    lgr OK "ECharts assets stored in ${dest}"
 }
 
 function dashboard:bench:charts {
