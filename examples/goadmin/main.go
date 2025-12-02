@@ -471,10 +471,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 			return err
 		}
 	}
-	cdnHost := os.Getenv("GO_DASHBOARD_ECHARTS_CDN")
-	if cdnHost == "" {
-		cdnHost = "https://cdn.jsdelivr.net/npm/echarts@5/dist/"
-	}
+	cdnHost := dashboard.DefaultEChartsAssetsHost()
 	salesRenderer := dashboard.NewEChartsProvider(
 		"line",
 		dashboard.WithChartCache(dashboard.NewChartCache(10*time.Minute)),
