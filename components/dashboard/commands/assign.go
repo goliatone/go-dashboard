@@ -33,6 +33,11 @@ func (c *AssignWidgetCommand) Execute(ctx context.Context, msg dashboard.AddWidg
 	if c.service == nil {
 		return errors.New("assign command requires service")
 	}
+	ctx = dashboard.ContextWithActivity(ctx, dashboard.ActivityContext{
+		ActorID:  msg.ActorID,
+		UserID:   msg.UserID,
+		TenantID: msg.TenantID,
+	})
 	if err := c.service.AddWidget(ctx, msg); err != nil {
 		return err
 	}
