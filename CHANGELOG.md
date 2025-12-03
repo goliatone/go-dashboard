@@ -1,5 +1,26 @@
 # Changelog
 
+# [0.4.0](https://github.com/goliatone/go-dashboard/compare/v0.3.0...v0.4.0) - (2025-12-03)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.4.0 ([189f848](https://github.com/goliatone/go-dashboard/commit/189f848da28851c2c18dce74982c677cdd3c0838))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Track activity ([e245a5a](https://github.com/goliatone/go-dashboard/commit/e245a5a0a553963226c3a4be26aa73a09d68eaf3))  - (goliatone)
+- Activity adapter ([57f10c5](https://github.com/goliatone/go-dashboard/commit/57f10c5c149d4e7d914081e8f55d94bd1ea8d1d4))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.3.0 ([16c725a](https://github.com/goliatone/go-dashboard/commit/16c725a4bd7ccdb45a6ccdba962da070ba882d9c))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([6b030e6](https://github.com/goliatone/go-dashboard/commit/6b030e6ca6a9e813389b15cdfb6ab3d81cd0c67b))  - (goliatone)
+- Update example ([93c024b](https://github.com/goliatone/go-dashboard/commit/93c024b7f6ebc3a147a2796289ec7eaed2317c20))  - (goliatone)
+- Update tests ([c000320](https://github.com/goliatone/go-dashboard/commit/c000320e7cdcedf8f5615e6641437337ca8603c8))  - (goliatone)
+
 # [0.3.0](https://github.com/goliatone/go-dashboard/compare/v0.2.0...v0.3.0) - (2025-12-02)
 
 ## <!-- 13 -->📦 Bumps
