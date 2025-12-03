@@ -21,9 +21,12 @@ import (
 	"github.com/goliatone/go-dashboard/components/dashboard/commands"
 	"github.com/goliatone/go-dashboard/components/dashboard/gorouter"
 	"github.com/goliatone/go-dashboard/components/dashboard/httpapi"
+	activitypkg "github.com/goliatone/go-dashboard/pkg/activity"
+	activityusersink "github.com/goliatone/go-dashboard/pkg/activity/usersink"
 	"github.com/goliatone/go-dashboard/pkg/analytics"
 	dashboardpkg "github.com/goliatone/go-dashboard/pkg/dashboard"
 	"github.com/goliatone/go-dashboard/pkg/goadmin"
+	"github.com/goliatone/go-users/pkg/types"
 )
 
 const sampleViewerID = "admin@example.com"
@@ -116,6 +119,29 @@ type staticThemeProvider struct {
 
 func (p *staticThemeProvider) SelectTheme(context.Context, dashboard.ThemeSelector) (*dashboard.ThemeSelection, error) {
 	return p.selection, nil
+}
+
+type demoActivityFeed struct {
+	items []dashboard.ActivityItem
+}
+
+func (f demoActivityFeed) Recent(_ context.Context, _ dashboard.ViewerContext, limit int) ([]dashboard.ActivityItem, error) {
+	if limit <= 0 || limit >= len(f.items) {
+		return append([]dashboard.ActivityItem{}, f.items...), nil
+	}
+	return append([]dashboard.ActivityItem{}, f.items[:limit]...), nil
+}
+
+type loggingActivitySink struct {
+	mu      sync.Mutex
+	records []types.ActivityRecord
+}
+
+func (s *loggingActivitySink) Log(_ context.Context, record types.ActivityRecord) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.records = append(s.records, record)
+	return nil
 }
 
 func demoThemeSelection() *dashboard.ThemeSelection {
@@ -486,6 +512,15 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
+	feed := demoActivityFeed{
+		items: []dashboard.ActivityItem{
+			{User: "Candice Reed", Action: "published the spring pricing update", Details: "Billing · Plan v3 rollout", Ago: 5 * time.Minute},
+			{User: "Noah Patel", Action: "invited 24 enterprise seats", Details: "Acme Industrial — Enterprise", Ago: 22 * time.Minute},
+			{User: "Marcos Valle", Action: "resolved 14 aging invoices", Details: "Finance · Treasury automation", Ago: 49 * time.Minute},
+			{User: "Sara Ndlovu", Action: "shipped a dashboard theme change", Details: "Design System · Canary env", Ago: 2 * time.Hour},
+			{User: "Elena Ibarra", Action: "closed incident #782", Details: "Checkout API · On-call", Ago: 6 * time.Hour},
+		},
+	}
 
 	customDefinition := dashboard.WidgetDefinition{
 		Code:        "demo.widget.welcome",
@@ -538,6 +573,14 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 		Translation:   translator,
 		ThemeProvider: themeProvider,
 		ThemeSelector: themeSelector,
+		ActivityFeed:  feed,
+		ActivityHooks: activitypkg.Hooks{
+			activityusersink.Hook{Sink: &loggingActivitySink{}},
+		},
+		ActivityConfig: activitypkg.Config{
+			Enabled: true,
+			Channel: "dashboard",
+		},
 	})
 	defaultViewer := dashboard.ViewerContext{UserID: sampleViewerID, Locale: "en"}
 
