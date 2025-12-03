@@ -34,23 +34,38 @@ func TestSeedDashboardCommand(t *testing.T) {
 func TestAssignWidgetCommand(t *testing.T) {
 	service := &stubService{}
 	cmd := NewAssignWidgetCommand(service, nil)
-	req := dashboard.AddWidgetRequest{DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main"}
+	req := dashboard.AddWidgetRequest{DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main", ActorID: "actor-1", UserID: "user-1", TenantID: "tenant-1"}
 	if err := cmd.Execute(context.Background(), req); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if service.addCalls != 1 {
 		t.Fatalf("expected add call")
 	}
+	if service.lastAddReq.ActorID != "actor-1" || service.lastAddReq.UserID != "user-1" || service.lastAddReq.TenantID != "tenant-1" {
+		t.Fatalf("expected actor context forwarded, got %+v", service.lastAddReq)
+	}
 }
 
 func TestRemoveWidgetCommand(t *testing.T) {
 	service := &stubService{}
 	cmd := NewRemoveWidgetCommand(service, nil)
-	if err := cmd.Execute(context.Background(), RemoveWidgetInput{WidgetID: "widget-1"}); err != nil {
+	input := RemoveWidgetInput{WidgetID: "widget-1", ActorID: "actor-1", UserID: "user-1", TenantID: "tenant-1"}
+	if err := cmd.Execute(context.Background(), input); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if service.removeCalls != 1 {
 		t.Fatalf("expected remove call")
+	}
+	if ctx := service.lastCtx; ctx == nil {
+		t.Fatalf("expected context to be set")
+	} else {
+		meta := dashboard.ViewerContext{}
+		if v := ctx.Value(dashboard.ViewerContext{}); v != nil {
+			if parsed, ok := v.(dashboard.ViewerContext); ok {
+				meta = parsed
+			}
+		}
+		_ = meta
 	}
 }
 
@@ -83,12 +98,15 @@ func TestRefreshWidgetCommand(t *testing.T) {
 func TestUpdateWidgetCommand(t *testing.T) {
 	service := &stubService{}
 	cmd := NewUpdateWidgetCommand(service, nil)
-	input := UpdateWidgetInput{WidgetID: "widget-1", Configuration: map[string]any{"title": "Updated"}}
+	input := UpdateWidgetInput{WidgetID: "widget-1", Configuration: map[string]any{"title": "Updated"}, ActorID: "actor-1", UserID: "user-1", TenantID: "tenant-1"}
 	if err := cmd.Execute(context.Background(), input); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
 	if service.updateCalls != 1 {
 		t.Fatalf("expected update call")
+	}
+	if service.lastUpdateReq.ActorID != "actor-1" || service.lastUpdateReq.UserID != "user-1" || service.lastUpdateReq.TenantID != "tenant-1" {
+		t.Fatalf("expected actor context forwarded, got %+v", service.lastUpdateReq)
 	}
 }
 
@@ -130,20 +148,26 @@ type stubService struct {
 	updateCalls   int
 	savePrefCalls int
 	lastOverrides dashboard.LayoutOverrides
+	lastCtx       context.Context
+	lastAddReq    dashboard.AddWidgetRequest
+	lastUpdateReq dashboard.UpdateWidgetRequest
 }
 
-func (s *stubService) AddWidget(context.Context, dashboard.AddWidgetRequest) error {
+func (s *stubService) AddWidget(_ context.Context, req dashboard.AddWidgetRequest) error {
 	s.addCalls++
+	s.lastAddReq = req
 	return nil
 }
 
-func (s *stubService) RemoveWidget(context.Context, string) error {
+func (s *stubService) RemoveWidget(ctx context.Context, _ string) error {
 	s.removeCalls++
+	s.lastCtx = ctx
 	return nil
 }
 
-func (s *stubService) ReorderWidgets(context.Context, string, []string) error {
+func (s *stubService) ReorderWidgets(ctx context.Context, _ string, _ []string) error {
 	s.reorderCalls++
+	s.lastCtx = ctx
 	return nil
 }
 
@@ -155,11 +179,14 @@ func (s *stubService) NotifyWidgetUpdated(context.Context, dashboard.WidgetEvent
 func (s *stubService) SavePreferences(ctx context.Context, viewer dashboard.ViewerContext, overrides dashboard.LayoutOverrides) error {
 	s.savePrefCalls++
 	s.lastOverrides = overrides
+	s.lastCtx = ctx
 	return nil
 }
 
 func (s *stubService) UpdateWidget(ctx context.Context, widgetID string, req dashboard.UpdateWidgetRequest) error {
 	s.updateCalls++
+	s.lastCtx = ctx
+	s.lastUpdateReq = req
 	return nil
 }
 
