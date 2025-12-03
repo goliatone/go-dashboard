@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	activitypkg "github.com/goliatone/go-dashboard/pkg/activity"
 	dashboardpkg "github.com/goliatone/go-dashboard/pkg/dashboard"
 )
 
@@ -27,6 +28,8 @@ type Config struct {
 	MenuBuilder     MenuBuilder
 	Service         *dashboardpkg.Service
 	DefaultMenuItem MenuItem
+	ActivityHooks   activitypkg.Hooks
+	ActivityConfig  activitypkg.Config
 }
 
 // Admin exposes helpers for go-admin style applications.
