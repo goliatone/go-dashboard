@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/goliatone/go-dashboard/pkg/activity"
 )
 
 var defaultAreas = []string{
@@ -35,11 +37,15 @@ type Options struct {
 	Areas           []string
 	Translation     TranslationService
 	ScriptNonce     func(context.Context) string
+	ActivityHooks   activity.Hooks
+	ActivityConfig  activity.Config
+	ActivityFeed    ActivityFeed
 }
 
 // Service orchestrates dashboard widgets on top of go-cms.
 type Service struct {
 	opts Options
+	act  *activity.Emitter
 }
 
 // NewService builds a Service instance with safe defaults.
@@ -60,7 +66,14 @@ func NewService(opts Options) *Service {
 	if opts.PreferenceStore == nil {
 		opts.PreferenceStore = NewInMemoryPreferenceStore()
 	}
-	return &Service{opts: opts}
+	svc := &Service{
+		opts: opts,
+		act:  newActivityEmitter(opts),
+	}
+	if opts.Providers != nil && opts.ActivityFeed != nil {
+		_ = opts.Providers.RegisterProvider("admin.widget.recent_activity", newRecentActivityProvider(opts.ActivityFeed))
+	}
+	return svc
 }
 
 // AddWidgetRequest captures the data required to create widget assignments.
@@ -73,6 +86,8 @@ type AddWidgetRequest struct {
 	StartAt       *time.Time
 	EndAt         *time.Time
 	UserID        string
+	ActorID       string `json:"actor_id,omitempty"`
+	TenantID      string `json:"tenant_id,omitempty"`
 	Locale        string
 }
 
@@ -80,6 +95,9 @@ type AddWidgetRequest struct {
 type UpdateWidgetRequest struct {
 	Configuration map[string]any
 	Metadata      map[string]any
+	ActorID       string `json:"actor_id,omitempty"`
+	UserID        string `json:"user_id,omitempty"`
+	TenantID      string `json:"tenant_id,omitempty"`
 }
 
 // AddWidget creates a widget instance and assigns it to an area.
@@ -135,11 +153,41 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 		"area_code":     req.AreaCode,
 		"definition_id": req.DefinitionID,
 	})
+	actCtx := resolveActivityContext(ctx, ActivityContext{
+		ActorID:  req.ActorID,
+		UserID:   req.UserID,
+		TenantID: req.TenantID,
+	})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.widget.add",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "widget_instance",
+		ObjectID:   instance.ID,
+		Metadata: map[string]any{
+			"area_code":     req.AreaCode,
+			"definition_id": req.DefinitionID,
+			"widget_id":     instance.ID,
+			"position":      req.Position,
+			"roles":         req.Roles,
+			"locale":        req.Locale,
+			"reason":        "add",
+		},
+		OccurredAt: time.Now(),
+	})
 	return nil
 }
 
 func (s *Service) recordTelemetry(ctx context.Context, event string, payload map[string]any) {
 	s.opts.Telemetry.Record(ctx, event, payload)
+}
+
+func (s *Service) emitActivity(ctx context.Context, event activity.Event) {
+	if s.act == nil || !s.act.Enabled() {
+		return
+	}
+	_ = s.act.Emit(ctx, event)
 }
 
 // RemoveWidget deletes the widget instance.
@@ -151,6 +199,10 @@ func (s *Service) RemoveWidget(ctx context.Context, widgetID string) error {
 	if widgetID == "" {
 		return errors.New("dashboard: widget id is required")
 	}
+	instance, err := store.GetInstance(ctx, widgetID)
+	if err != nil {
+		return err
+	}
 	if err := store.DeleteInstance(ctx, widgetID); err != nil {
 		return err
 	}
@@ -161,6 +213,22 @@ func (s *Service) RemoveWidget(ctx context.Context, widgetID string) error {
 		return err
 	}
 	s.recordTelemetry(ctx, "dashboard.widget.remove", map[string]any{"widget_id": widgetID})
+	actCtx := resolveActivityContext(ctx, ActivityContext{})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.widget.remove",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "widget_instance",
+		ObjectID:   widgetID,
+		Metadata: map[string]any{
+			"area_code":     instance.AreaCode,
+			"definition_id": instance.DefinitionID,
+			"widget_id":     widgetID,
+			"reason":        "delete",
+		},
+		OccurredAt: time.Now(),
+	})
 	return nil
 }
 
@@ -211,6 +279,26 @@ func (s *Service) UpdateWidget(ctx context.Context, widgetID string, req UpdateW
 		"widget_id":     widgetID,
 		"definition_id": current.DefinitionID,
 	})
+	actCtx := resolveActivityContext(ctx, ActivityContext{
+		ActorID:  req.ActorID,
+		UserID:   req.UserID,
+		TenantID: req.TenantID,
+	})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.widget.update",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "widget_instance",
+		ObjectID:   widgetID,
+		Metadata: map[string]any{
+			"definition_id": current.DefinitionID,
+			"area_code":     updated.AreaCode,
+			"widget_id":     widgetID,
+			"reason":        "update",
+		},
+		OccurredAt: time.Now(),
+	})
 	return nil
 }
 
@@ -238,6 +326,21 @@ func (s *Service) ReorderWidgets(ctx context.Context, areaCode string, widgetIDs
 	s.recordTelemetry(ctx, "dashboard.widget.reorder", map[string]any{
 		"area_code": areaCode,
 		"count":     len(widgetIDs),
+	})
+	actCtx := resolveActivityContext(ctx, ActivityContext{})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.widget.reorder",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "widget_instance",
+		ObjectID:   areaCode,
+		Metadata: map[string]any{
+			"area_code": areaCode,
+			"count":     len(widgetIDs),
+			"reason":    "reorder",
+		},
+		OccurredAt: time.Now(),
 	})
 	return nil
 }
@@ -418,6 +521,21 @@ func (s *Service) NotifyWidgetUpdated(ctx context.Context, event WidgetEvent) er
 		"widget_id": event.Instance.ID,
 		"reason":    event.Reason,
 	})
+	actCtx := resolveActivityContext(ctx, ActivityContext{})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.widget.event",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "widget_instance",
+		ObjectID:   event.Instance.ID,
+		Metadata: map[string]any{
+			"area_code": event.AreaCode,
+			"widget_id": event.Instance.ID,
+			"reason":    event.Reason,
+		},
+		OccurredAt: time.Now(),
+	})
 	return nil
 }
 
@@ -430,7 +548,30 @@ func (s *Service) SavePreferences(ctx context.Context, viewer ViewerContext, ove
 		overrides.Locale = viewer.Locale
 	}
 	s.normalizeOverrides(&overrides)
-	return s.opts.PreferenceStore.SaveLayoutOverrides(ctx, viewer, overrides)
+	if err := s.opts.PreferenceStore.SaveLayoutOverrides(ctx, viewer, overrides); err != nil {
+		return err
+	}
+	actCtx := resolveActivityContext(ctx, ActivityContext{
+		ActorID: viewer.UserID,
+		UserID:  viewer.UserID,
+	})
+	s.emitActivity(ctx, activity.Event{
+		Verb:       "dashboard.preferences.save",
+		ActorID:    actCtx.ActorID,
+		UserID:     actCtx.UserID,
+		TenantID:   actCtx.TenantID,
+		ObjectType: "dashboard_preferences",
+		ObjectID:   viewer.UserID,
+		Metadata: map[string]any{
+			"locale":        overrides.Locale,
+			"areas":         len(overrides.AreaOrder),
+			"hidden_count":  len(overrides.HiddenWidgets),
+			"viewer_roles":  viewer.Roles,
+			"viewer_locale": viewer.Locale,
+		},
+		OccurredAt: time.Now(),
+	})
+	return nil
 }
 
 func (s *Service) normalizeOverrides(overrides *LayoutOverrides) {
@@ -452,4 +593,40 @@ type noopRefreshHook struct{}
 
 func (noopRefreshHook) WidgetUpdated(context.Context, WidgetEvent) error {
 	return nil
+}
+
+func newActivityEmitter(opts Options) *activity.Emitter {
+	cfg := opts.ActivityConfig
+	return activity.NewEmitter(cloneActivityHooks(opts.ActivityHooks), cfg)
+}
+
+func cloneActivityHooks(hooks activity.Hooks) activity.Hooks {
+	if len(hooks) == 0 {
+		return nil
+	}
+	normalized := make([]activity.ActivityHook, 0, len(hooks))
+	for _, hook := range hooks {
+		if hook == nil {
+			continue
+		}
+		normalized = append(normalized, hook)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return activity.Hooks(normalized)
+}
+
+func resolveActivityContext(ctx context.Context, fallback ActivityContext) ActivityContext {
+	meta := activityContextFrom(ctx)
+	if meta.ActorID == "" {
+		meta.ActorID = fallback.ActorID
+	}
+	if meta.UserID == "" {
+		meta.UserID = fallback.UserID
+	}
+	if meta.TenantID == "" {
+		meta.TenantID = fallback.TenantID
+	}
+	return meta
 }
