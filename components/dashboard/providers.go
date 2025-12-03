@@ -14,22 +14,7 @@ var defaultProviders = map[string]Provider{
 			"values": map[string]int{"total": 1200, "active": 875, "new": 32},
 		}, nil
 	}),
-	"admin.widget.recent_activity": ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
-		limit := 10
-		if v, ok := meta.Instance.Configuration["limit"].(int); ok && v > 0 {
-			limit = v
-		}
-		items := make([]map[string]any, 0, limit)
-		for i := 0; i < limit; i++ {
-			items = append(items, map[string]any{
-				"user":    "User " + string(rune('A'+i)),
-				"action":  "updated content",
-				"ago":     time.Duration(i+1) * time.Minute,
-				"details": "Placeholder event",
-			})
-		}
-		return WidgetData{"items": items}, nil
-	}),
+	"admin.widget.recent_activity": newRecentActivityProvider(nil),
 	"admin.widget.sales_chart": NewSalesChartProvider(
 		NewStaticSalesRepository(defaultSalesSeries()),
 		NewEChartsProvider("line"),
@@ -59,6 +44,32 @@ var defaultProviders = map[string]Provider{
 	"admin.widget.analytics_funnel": NewFunnelAnalyticsProvider(DemoFunnelRepository{}),
 	"admin.widget.cohort_overview":  NewCohortAnalyticsProvider(DemoCohortRepository{}),
 	"admin.widget.alert_trends":     NewAlertTrendsProvider(DemoAlertRepository{}),
+}
+
+func newRecentActivityProvider(feed ActivityFeed) Provider {
+	return ProviderFunc(func(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+		if feed == nil {
+			feed = DefaultActivityFeed()
+		}
+		limit := 10
+		if v, ok := meta.Instance.Configuration["limit"].(int); ok && v > 0 {
+			limit = v
+		}
+		items, err := feed.Recent(ctx, meta.Viewer, limit)
+		if err != nil {
+			return nil, err
+		}
+		payload := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			payload = append(payload, map[string]any{
+				"user":    item.User,
+				"action":  item.Action,
+				"details": item.Details,
+				"ago":     item.Ago,
+			})
+		}
+		return WidgetData{"items": payload}, nil
+	})
 }
 
 func defaultSalesSeries() []SalesSeriesPoint {
