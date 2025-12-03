@@ -9,7 +9,10 @@ import (
 
 // RemoveWidgetInput identifies the widget instance to remove.
 type RemoveWidgetInput struct {
-	WidgetID string
+	WidgetID string `json:"widget_id"`
+	ActorID  string `json:"actor_id"`
+	UserID   string `json:"user_id"`
+	TenantID string `json:"tenant_id"`
 }
 
 // RemoveWidgetCommand removes widget instances through the service and records
@@ -36,6 +39,11 @@ func (c *RemoveWidgetCommand) Execute(ctx context.Context, msg RemoveWidgetInput
 	if c.service == nil {
 		return errors.New("remove command requires service")
 	}
+	ctx = dashboard.ContextWithActivity(ctx, dashboard.ActivityContext{
+		ActorID:  msg.ActorID,
+		UserID:   msg.UserID,
+		TenantID: msg.TenantID,
+	})
 	if err := c.service.RemoveWidget(ctx, msg.WidgetID); err != nil {
 		return err
 	}

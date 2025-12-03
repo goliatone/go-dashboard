@@ -13,6 +13,9 @@ type UpdateWidgetInput struct {
 	WidgetID      string         `json:"widget_id"`
 	Configuration map[string]any `json:"configuration"`
 	Metadata      map[string]any `json:"metadata"`
+	ActorID       string         `json:"actor_id"`
+	UserID        string         `json:"user_id"`
+	TenantID      string         `json:"tenant_id"`
 }
 
 type updateService interface {
@@ -40,9 +43,17 @@ func (c *UpdateWidgetCommand) Execute(ctx context.Context, msg UpdateWidgetInput
 	if msg.WidgetID == "" {
 		return errors.New("update command requires widget id")
 	}
+	ctx = dashboard.ContextWithActivity(ctx, dashboard.ActivityContext{
+		ActorID:  msg.ActorID,
+		UserID:   msg.UserID,
+		TenantID: msg.TenantID,
+	})
 	req := dashboard.UpdateWidgetRequest{
 		Configuration: msg.Configuration,
 		Metadata:      msg.Metadata,
+		ActorID:       msg.ActorID,
+		UserID:        msg.UserID,
+		TenantID:      msg.TenantID,
 	}
 	if err := c.service.UpdateWidget(ctx, msg.WidgetID, req); err != nil {
 		return err

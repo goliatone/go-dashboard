@@ -11,6 +11,9 @@ import (
 type ReorderWidgetsInput struct {
 	AreaCode  string
 	WidgetIDs []string
+	ActorID   string `json:"actor_id"`
+	UserID    string `json:"user_id"`
+	TenantID  string `json:"tenant_id"`
 }
 
 // ReorderWidgetsCommand wraps Service.ReorderWidgets so transports only have to
@@ -37,6 +40,11 @@ func (c *ReorderWidgetsCommand) Execute(ctx context.Context, msg ReorderWidgetsI
 	if c.service == nil {
 		return errors.New("reorder command requires service")
 	}
+	ctx = dashboard.ContextWithActivity(ctx, dashboard.ActivityContext{
+		ActorID:  msg.ActorID,
+		UserID:   msg.UserID,
+		TenantID: msg.TenantID,
+	})
 	if err := c.service.ReorderWidgets(ctx, msg.AreaCode, msg.WidgetIDs); err != nil {
 		return err
 	}
