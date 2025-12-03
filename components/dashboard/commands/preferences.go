@@ -50,6 +50,10 @@ func (c *SaveLayoutPreferencesCommand) Execute(ctx context.Context, msg SaveLayo
 	if msg.Viewer.UserID == "" {
 		return errors.New("preferences command requires viewer user id")
 	}
+	ctx = dashboard.ContextWithActivity(ctx, dashboard.ActivityContext{
+		ActorID: msg.Viewer.UserID,
+		UserID:  msg.Viewer.UserID,
+	})
 	overrides := dashboard.LayoutOverrides{
 		AreaOrder:     msg.AreaOrder,
 		AreaRows:      convertLayoutRows(msg.LayoutRows),
