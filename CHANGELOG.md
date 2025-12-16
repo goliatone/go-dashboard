@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.5.0](https://github.com/goliatone/go-dashboard/compare/v0.4.0...v0.5.0) - (2025-12-16)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- EchartAssets provider ([9b6c0fb](https://github.com/goliatone/go-dashboard/commit/9b6c0fbea7cddebb734f22909c5653eff27471b7))  - (goliatone)
+- Include dashboard ([1615023](https://github.com/goliatone/go-dashboard/commit/16150231e24f145f6ba4793bda2efb0056715f5d))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.5.0 ([a545fc8](https://github.com/goliatone/go-dashboard/commit/a545fc855c1c067798e377a80996e19d3a8ce04d))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.4.0 ([216fb87](https://github.com/goliatone/go-dashboard/commit/216fb878b625962e54bf75dd06694fc78133f7e4))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update example ([7fe9250](https://github.com/goliatone/go-dashboard/commit/7fe925093af70fc622c8fa59b478de842074e2b7))  - (goliatone)
+
 # [0.4.0](https://github.com/goliatone/go-dashboard/compare/v0.3.0...v0.4.0) - (2025-12-03)
 
 ## <!-- 13 -->📦 Bumps
