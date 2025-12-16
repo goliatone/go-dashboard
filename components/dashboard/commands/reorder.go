@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	gocommand "github.com/goliatone/go-command"
+	dashboard "github.com/goliatone/go-dashboard/components/dashboard"
 )
 
 // ReorderWidgetsInput contains the reorder payload.
