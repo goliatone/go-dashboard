@@ -61,7 +61,7 @@ func Register[T any](cfg Config[T]) error {
 
 	if routes.Assets != "" {
 		cfg.Router.Static(routes.Assets, ".", router.Static{
-			FS:     dashboard.EChartsAssetsFS(),
+			FS:     dashboard.EChartsAssets(),
 			Root:   ".",
 			MaxAge: 86400,
 		})
