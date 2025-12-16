@@ -478,7 +478,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 		}),
 		"admin.widget.recent_activity": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 			return dashboard.WidgetData{
-				"items": demoActivityFeed(ctx, time.Now(), meta.Translator, meta.Viewer.Locale),
+				"items": demoActivityFeedData(ctx, time.Now(), meta.Translator, meta.Viewer.Locale),
 			}, nil
 		}),
 		"admin.widget.quick_actions": dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
@@ -759,7 +759,7 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 	return service, registry, store
 }
 
-func demoActivityFeed(ctx context.Context, now time.Time, translator dashboard.TranslationService, locale string) []map[string]any {
+func demoActivityFeedData(ctx context.Context, now time.Time, translator dashboard.TranslationService, locale string) []map[string]any {
 	entries := []struct {
 		User          string
 		ActionKey     string
