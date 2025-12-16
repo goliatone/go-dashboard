@@ -19,14 +19,19 @@ const (
 //go:embed assets/echarts/* assets/echarts/themes/*
 var embeddedEChartsAssets embed.FS
 
-// EChartsAssetsFS exposes the embedded ECharts runtime and themes.
-func EChartsAssetsFS() http.FileSystem {
+// EChartsAssets returns the embedded ECharts runtime and themes as an fs.FS.
+func EChartsAssets() fs.FS {
 	sub, err := fs.Sub(embeddedEChartsAssets, "assets/echarts")
 	if err != nil {
 		// This should never happen because the directory is embedded at build time.
 		panic(fmt.Errorf("dashboard: failed to prepare embedded ECharts assets: %w", err))
 	}
-	return http.FS(sub)
+	return sub
+}
+
+// EChartsAssetsFS exposes the embedded ECharts runtime and themes.
+func EChartsAssetsFS() http.FileSystem {
+	return http.FS(EChartsAssets())
 }
 
 // EChartsAssetsHandler returns an http.Handler that serves the embedded assets from the given prefix.
