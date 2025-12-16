@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	gocommand "github.com/goliatone/go-command"
+	dashboard "github.com/goliatone/go-dashboard/components/dashboard"
 )
 
 // RemoveWidgetInput identifies the widget instance to remove.
