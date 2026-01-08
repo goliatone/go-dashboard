@@ -7,10 +7,11 @@ require (
 	github.com/ettle/strcase v0.2.0
 	github.com/go-echarts/go-echarts/v2 v2.5.0
 	github.com/gofiber/fiber/v2 v2.52.6
-	github.com/goliatone/go-command v0.6.0
-	github.com/goliatone/go-router v0.23.0
+	github.com/goliatone/go-command v0.12.0
+	github.com/goliatone/go-router v0.41.0
 	github.com/goliatone/go-template v0.3.1
-	github.com/goliatone/go-users v0.3.0
+	github.com/goliatone/go-users v0.4.0
+	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -32,10 +33,10 @@ require (
 	github.com/goliatone/go-composite-fs v0.0.1 // indirect
 	github.com/goliatone/go-errors v0.9.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
