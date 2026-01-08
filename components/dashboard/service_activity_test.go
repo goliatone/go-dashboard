@@ -21,6 +21,9 @@ func TestAddWidgetEmitsActivity(t *testing.T) {
 	req := AddWidgetRequest{
 		DefinitionID: "admin.widget.user_stats",
 		AreaCode:     "admin.dashboard.main",
+		Configuration: map[string]any{
+			"metric": "total",
+		},
 		ActorID:      "actor-1",
 		UserID:       "user-1",
 		TenantID:     "tenant-1",
