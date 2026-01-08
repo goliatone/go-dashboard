@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.6.0](https://github.com/goliatone/go-dashboard/compare/v0.5.0...v0.6.0) - (2026-01-08)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Test use metric ([1c3de8f](https://github.com/goliatone/go-dashboard/commit/1c3de8ff2a1480fc47bc59850f002a3559780993))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.6.0 ([3fdf04e](https://github.com/goliatone/go-dashboard/commit/3fdf04e630f83ec2b9ac924819b15ac3267abb8e))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.5.0 ([c1e5c8e](https://github.com/goliatone/go-dashboard/commit/c1e5c8e10c6c8c02b1bbfb1e48fbeea09e7e3743))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([893b452](https://github.com/goliatone/go-dashboard/commit/893b452bb81834f43f42613cbcb2306d74f58c5d))  - (goliatone)
+
 # [0.5.0](https://github.com/goliatone/go-dashboard/compare/v0.4.0...v0.5.0) - (2025-12-16)
 
 ## <!-- 1 -->🐛 Bug Fixes
