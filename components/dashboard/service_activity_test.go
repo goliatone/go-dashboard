@@ -24,9 +24,9 @@ func TestAddWidgetEmitsActivity(t *testing.T) {
 		Configuration: map[string]any{
 			"metric": "total",
 		},
-		ActorID:      "actor-1",
-		UserID:       "user-1",
-		TenantID:     "tenant-1",
+		ActorID:  "actor-1",
+		UserID:   "user-1",
+		TenantID: "tenant-1",
 	}
 	if err := service.AddWidget(context.Background(), req); err != nil {
 		t.Fatalf("AddWidget returned error: %v", err)
