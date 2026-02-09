@@ -1,5 +1,24 @@
 # Changelog
 
+# [0.7.0](https://github.com/goliatone/go-dashboard/compare/v0.6.0...v0.7.0) - (2026-02-09)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.7.0 ([2bef071](https://github.com/goliatone/go-dashboard/commit/2bef07130f4c83b6895c24e2b3dc30a8bb35604e))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Activity adapters layer ([842be73](https://github.com/goliatone/go-dashboard/commit/842be73f0cc008892e83a2896ecea5e357c81676))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.6.0 ([992c21e](https://github.com/goliatone/go-dashboard/commit/992c21e58fa43129e2a16c3bf8b0403cf10dd565))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Udpate deps ([7a1f437](https://github.com/goliatone/go-dashboard/commit/7a1f4371753703749c19bc39e7f7265004d93432))  - (goliatone)
+- Update test ([ae78419](https://github.com/goliatone/go-dashboard/commit/ae78419d1468dd9c39a690f04f6905ae4babe0eb))  - (goliatone)
+
 # [0.6.0](https://github.com/goliatone/go-dashboard/compare/v0.5.0...v0.6.0) - (2026-01-08)
 
 ## <!-- 1 -->🐛 Bug Fixes
