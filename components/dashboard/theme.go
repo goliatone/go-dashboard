@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"maps"
 	"strings"
 )
 
@@ -140,21 +141,15 @@ func cloneThemeSelection(selection *ThemeSelection) *ThemeSelection {
 	cloned := *selection
 	if len(selection.Tokens) > 0 {
 		cloned.Tokens = make(map[string]string, len(selection.Tokens))
-		for key, value := range selection.Tokens {
-			cloned.Tokens[key] = value
-		}
+		maps.Copy(cloned.Tokens, selection.Tokens)
 	}
 	if len(selection.Templates) > 0 {
 		cloned.Templates = make(map[string]string, len(selection.Templates))
-		for key, value := range selection.Templates {
-			cloned.Templates[key] = value
-		}
+		maps.Copy(cloned.Templates, selection.Templates)
 	}
 	if len(selection.Assets.Values) > 0 {
 		cloned.Assets.Values = make(map[string]string, len(selection.Assets.Values))
-		for key, value := range selection.Assets.Values {
-			cloned.Assets.Values[key] = value
-		}
+		maps.Copy(cloned.Assets.Values, selection.Assets.Values)
 	}
 	return &cloned
 }

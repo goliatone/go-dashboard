@@ -9,13 +9,7 @@ import (
 )
 
 // ReorderWidgetsInput contains the reorder payload.
-type ReorderWidgetsInput struct {
-	AreaCode  string
-	WidgetIDs []string
-	ActorID   string `json:"actor_id"`
-	UserID    string `json:"user_id"`
-	TenantID  string `json:"tenant_id"`
-}
+type ReorderWidgetsInput = dashboard.ReorderWidgetsInput
 
 // ReorderWidgetsCommand wraps Service.ReorderWidgets so transports only have to
 // worry about parsing JSON payloads before invoking the shared logic.

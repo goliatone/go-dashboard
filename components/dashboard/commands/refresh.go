@@ -9,9 +9,7 @@ import (
 )
 
 // RefreshWidgetInput emits refresh notifications for a widget instance.
-type RefreshWidgetInput struct {
-	Event dashboard.WidgetEvent
-}
+type RefreshWidgetInput = dashboard.RefreshWidgetInput
 
 // RefreshWidgetCommand triggers refresh hooks without forcing transports.
 type refreshNotifier interface {

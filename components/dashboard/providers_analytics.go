@@ -371,10 +371,7 @@ type DemoAlertRepository struct{}
 
 func (DemoAlertRepository) FetchAlertTrends(ctx context.Context, query AlertTrendQuery) (AlertTrendsReport, error) {
 	now := time.Now().UTC()
-	days := query.LookbackDays
-	if days > 14 {
-		days = 14
-	}
+	days := min(query.LookbackDays, 14)
 	series := make([]AlertSeries, 0, days)
 	totals := map[string]int{"info": 0, "warning": 0, "critical": 0}
 	severities := query.Severities

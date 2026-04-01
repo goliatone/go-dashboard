@@ -14,18 +14,23 @@ type LayoutResolver interface {
 
 // Controller orchestrates HTTP handlers/routes for the admin dashboard.
 type Controller struct {
-	service  LayoutResolver
-	renderer Renderer
-	template string
-	areas    []AreaSlot
+	service          LayoutResolver
+	renderer         Renderer
+	template         string
+	areas            []AreaSlot
+	payloadDecorator PayloadDecorator
 }
+
+// PayloadDecorator mutates a controller payload after the canonical payload is built.
+type PayloadDecorator func(ctx context.Context, viewer ViewerContext, payload map[string]any) (map[string]any, error)
 
 // ControllerOptions configures the HTTP controller.
 type ControllerOptions struct {
-	Service  LayoutResolver
-	Renderer Renderer
-	Template string
-	Areas    []AreaSlot
+	Service          LayoutResolver
+	Renderer         Renderer
+	Template         string
+	Areas            []AreaSlot
+	PayloadDecorator PayloadDecorator
 }
 
 // AreaSlot describes the mapping between a payload slot (main/sidebar/etc.)
@@ -42,10 +47,11 @@ func NewController(opts ControllerOptions) *Controller {
 		templateName = "dashboard.html"
 	}
 	return &Controller{
-		service:  opts.Service,
-		renderer: opts.Renderer,
-		template: templateName,
-		areas:    normalizeAreaSlots(opts.Areas),
+		service:          opts.Service,
+		renderer:         opts.Renderer,
+		template:         templateName,
+		areas:            normalizeAreaSlots(opts.Areas),
+		payloadDecorator: opts.PayloadDecorator,
 	}
 }
 
@@ -95,7 +101,7 @@ func (c *Controller) widgetsPayload(instances []WidgetInstance, theme map[string
 	for _, inst := range instances {
 		var data any
 		if inst.Metadata != nil {
-			data = inst.Metadata["data"]
+			data = normalizeWidgetPayloadData(inst.Metadata["data"])
 		}
 		widgets = append(widgets, map[string]any{
 			"id":         inst.ID,
@@ -103,12 +109,24 @@ func (c *Controller) widgetsPayload(instances []WidgetInstance, theme map[string
 			"template":   templatePathFor(inst.DefinitionID),
 			"config":     inst.Configuration,
 			"data":       data,
+			"area":       inst.AreaCode,
 			"area_code":  inst.AreaCode,
+			"span":       widgetSpan(inst.Metadata),
+			"hidden":     widgetHidden(inst.Metadata),
 			"metadata":   inst.Metadata,
 			"theme":      theme,
 		})
 	}
 	return widgets
+}
+
+func normalizeWidgetPayloadData(data any) any {
+	switch typed := data.(type) {
+	case WidgetData:
+		return map[string]any(typed)
+	default:
+		return data
+	}
 }
 
 func (c *Controller) templatePath() string {
@@ -138,6 +156,15 @@ func (c *Controller) payloadForViewer(ctx context.Context, viewer ViewerContext)
 		payload["locale"] = viewer.Locale
 	} else {
 		payload["locale"] = ""
+	}
+	if c.payloadDecorator != nil {
+		decorated, err := c.payloadDecorator(ctx, viewer, payload)
+		if err != nil {
+			return nil, err
+		}
+		if decorated != nil {
+			payload = decorated
+		}
 	}
 	return payload, nil
 }
@@ -212,4 +239,39 @@ func normalizeAreaSlots(slots []AreaSlot) []AreaSlot {
 		result = append(result, slot)
 	}
 	return result
+}
+
+func widgetSpan(metadata map[string]any) int {
+	if metadata == nil {
+		return 12
+	}
+	if layout, ok := metadata["layout"].(map[string]any); ok {
+		switch width := layout["width"].(type) {
+		case int:
+			if width > 0 {
+				return width
+			}
+		case int32:
+			if width > 0 {
+				return int(width)
+			}
+		case int64:
+			if width > 0 {
+				return int(width)
+			}
+		case float64:
+			if width > 0 {
+				return int(width)
+			}
+		}
+	}
+	return 12
+}
+
+func widgetHidden(metadata map[string]any) bool {
+	if metadata == nil {
+		return false
+	}
+	hidden, _ := metadata["hidden"].(bool)
+	return hidden
 }

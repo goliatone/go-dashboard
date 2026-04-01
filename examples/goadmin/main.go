@@ -1021,7 +1021,7 @@ func toDataMap(value any) map[string]any {
 	case map[string]any:
 		return v
 	default:
-		if m, ok := value.(map[string]interface{}); ok {
+		if m, ok := value.(map[string]any); ok {
 			return map[string]any(m)
 		}
 		return nil

@@ -9,21 +9,11 @@ import (
 )
 
 // SaveLayoutPreferencesInput captures viewer overrides for layout customization.
-type SaveLayoutPreferencesInput struct {
-	Viewer        dashboard.ViewerContext     `json:"viewer"`
-	AreaOrder     map[string][]string         `json:"area_order"`
-	LayoutRows    map[string][]LayoutRowInput `json:"layout_rows"`
-	HiddenWidgets []string                    `json:"hidden_widget_ids"`
-}
+type SaveLayoutPreferencesInput = dashboard.SaveLayoutPreferencesInput
 
-type LayoutRowInput struct {
-	Widgets []LayoutWidgetInput `json:"widgets"`
-}
+type LayoutRowInput = dashboard.LayoutRowInput
 
-type LayoutWidgetInput struct {
-	ID    string `json:"id"`
-	Width int    `json:"width"`
-}
+type LayoutWidgetInput = dashboard.LayoutWidgetInput
 
 type preferenceService interface {
 	SavePreferences(ctx context.Context, viewer dashboard.ViewerContext, overrides dashboard.LayoutOverrides) error

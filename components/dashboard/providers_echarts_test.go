@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -417,8 +418,6 @@ func cloneConfig(cfg map[string]any) map[string]any {
 		return map[string]any{}
 	}
 	out := make(map[string]any, len(cfg))
-	for k, v := range cfg {
-		out[k] = v
-	}
+	maps.Copy(out, cfg)
 	return out
 }

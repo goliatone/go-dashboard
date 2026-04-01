@@ -67,7 +67,7 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 		layout: Layout{
 			Areas: map[string][]WidgetInstance{
 				"admin.dashboard.main": {
-					{ID: "w1", DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main", Configuration: map[string]any{"metric": "total"}},
+					{ID: "w1", DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main", Configuration: map[string]any{"metric": "total"}, Metadata: map[string]any{"data": WidgetData{"value": 42}}},
 				},
 			},
 		},
@@ -101,6 +101,9 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 	}
 	if _, ok := widgets[0]["area_code"]; !ok {
 		t.Fatalf("expected area_code key on widget payload")
+	}
+	if _, ok := widgets[0]["data"].(map[string]any); !ok {
+		t.Fatalf("expected widget data normalized to map[string]any, got %T", widgets[0]["data"])
 	}
 
 	ordered, ok := payload["ordered_areas"].([]map[string]any)
@@ -237,5 +240,43 @@ func TestControllerSupportsCustomAreas(t *testing.T) {
 	ordered := payload["ordered_areas"].([]map[string]any)
 	if ordered[0]["slot"] != "hero" || ordered[1]["slot"] != "bottom" {
 		t.Fatalf("unexpected ordered slot sequence: %+v", ordered)
+	}
+}
+
+func TestControllerPayloadDecoratorAppliesToLayoutAndRenderTemplate(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats"},
+				},
+			},
+		},
+	}
+	renderer := &stubRenderer{}
+	controller := NewController(ControllerOptions{
+		Service:  service,
+		Renderer: renderer,
+		PayloadDecorator: func(_ context.Context, viewer ViewerContext, payload map[string]any) (map[string]any, error) {
+			payload["viewer_id"] = viewer.UserID
+			payload["decorated"] = true
+			return payload, nil
+		},
+	})
+
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	if payload["viewer_id"] != "user-1" || payload["decorated"] != true {
+		t.Fatalf("expected decorated layout payload, got %+v", payload)
+	}
+
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
+		t.Fatalf("RenderTemplate returned error: %v", err)
+	}
+	if renderer.lastPayload["viewer_id"] != "user-1" || renderer.lastPayload["decorated"] != true {
+		t.Fatalf("expected decorated render payload, got %+v", renderer.lastPayload)
 	}
 }

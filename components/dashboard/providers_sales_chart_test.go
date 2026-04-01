@@ -39,7 +39,7 @@ type stubSalesRepo struct{}
 
 func (stubSalesRepo) FetchSalesSeries(_ context.Context, query SalesSeriesQuery) ([]SalesSeriesPoint, error) {
 	points := make([]SalesSeriesPoint, 3)
-	for i := 0; i < len(points); i++ {
+	for i := range points {
 		points[i] = SalesSeriesPoint{
 			Timestamp: time.Date(2024, time.January, i+1, 0, 0, 0, 0, time.UTC),
 			Value:     float64(1000 + (i * 100)),

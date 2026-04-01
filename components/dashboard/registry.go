@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"fmt"
+	"maps"
 	"sync"
 )
 
@@ -90,7 +91,7 @@ func (r *Registry) RegisterDefinition(def WidgetDefinition) error {
 	def.normalizeLocalizedFields()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.definitions[def.Code] = def
+	r.definitions[def.Code] = cloneWidgetDefinition(def)
 	return nil
 }
 
@@ -116,7 +117,7 @@ func (r *Registry) Definition(code string) (WidgetDefinition, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	def, ok := r.definitions[code]
-	return def, ok
+	return cloneWidgetDefinition(def), ok
 }
 
 // Provider fetches a widget provider by code.
@@ -132,7 +133,7 @@ func (r *Registry) ProviderMetadata(code string) (ManifestProvider, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	meta, ok := r.manifestMeta[code]
-	return meta, ok
+	return cloneManifestProvider(meta), ok
 }
 
 // Definitions returns all registered definitions.
@@ -141,9 +142,31 @@ func (r *Registry) Definitions() []WidgetDefinition {
 	defer r.mu.RUnlock()
 	defs := make([]WidgetDefinition, 0, len(r.definitions))
 	for _, def := range r.definitions {
-		defs = append(defs, def)
+		defs = append(defs, cloneWidgetDefinition(def))
 	}
 	return defs
+}
+
+// Clone returns an immutable snapshot of the current registry state.
+func (r *Registry) Clone() *Registry {
+	if r == nil {
+		return nil
+	}
+	snapshot := &Registry{
+		definitions:  map[string]WidgetDefinition{},
+		providers:    map[string]Provider{},
+		manifestMeta: map[string]ManifestProvider{},
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for code, def := range r.definitions {
+		snapshot.definitions[code] = cloneWidgetDefinition(def)
+	}
+	maps.Copy(snapshot.providers, r.providers)
+	for code, meta := range r.manifestMeta {
+		snapshot.manifestMeta[code] = cloneManifestProvider(meta)
+	}
+	return snapshot
 }
 
 func (r *Registry) recordProviderMetadata(code string, meta ManifestProvider) {
@@ -152,5 +175,30 @@ func (r *Registry) recordProviderMetadata(code string, meta ManifestProvider) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.manifestMeta[code] = meta
+	r.manifestMeta[code] = cloneManifestProvider(meta)
+}
+
+func cloneWidgetDefinition(def WidgetDefinition) WidgetDefinition {
+	def.NameLocalized = cloneLocalizedFields(def.NameLocalized)
+	def.DescriptionLocalized = cloneLocalizedFields(def.DescriptionLocalized)
+	def.Schema = cloneAnyMap(def.Schema)
+	return def
+}
+
+func cloneLocalizedFields(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	maps.Copy(out, in)
+	return out
+}
+
+func cloneAnyMap(in map[string]any) map[string]any {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	maps.Copy(out, in)
+	return out
 }

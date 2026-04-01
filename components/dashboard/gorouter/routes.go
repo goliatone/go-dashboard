@@ -1,7 +1,6 @@
 package gorouter
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	router "github.com/goliatone/go-router"
 
 	"github.com/goliatone/go-dashboard/components/dashboard"
-	"github.com/goliatone/go-dashboard/components/dashboard/commands"
 	"github.com/goliatone/go-dashboard/components/dashboard/httpapi"
 )
 
@@ -21,7 +19,7 @@ type ViewerResolver func(router.Context) dashboard.ViewerContext
 type Config[T any] struct {
 	Router         router.Router[T]
 	Controller     *dashboard.Controller
-	API            httpapi.Executor
+	API            dashboard.Executor
 	Broadcast      *dashboard.BroadcastHook
 	ViewerResolver ViewerResolver
 	BasePath       string
@@ -71,17 +69,17 @@ func Register[T any](cfg Config[T]) error {
 
 	group.Get(routes.HTML, router.WrapHandler(func(ctx router.Context) error {
 		viewer := viewerResolver(ctx)
-		var buf bytes.Buffer
-		if err := cfg.Controller.RenderTemplate(ctx.Context(), viewer, &buf); err != nil {
+		html, err := httpapi.RenderHTML(ctx.Context(), cfg.Controller, viewer)
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
 		ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
-		return ctx.Send(buf.Bytes())
+		return ctx.Send(html)
 	}))
 
 	group.Get(routes.Layout, router.WrapHandler(func(ctx router.Context) error {
 		viewer := viewerResolver(ctx)
-		payload, err := cfg.Controller.LayoutPayload(ctx.Context(), viewer)
+		payload, err := httpapi.Layout(ctx.Context(), cfg.Controller, viewer)
 		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
@@ -99,16 +97,17 @@ func Register[T any](cfg Config[T]) error {
 	return nil
 }
 
-func registerAPI[T any](r router.Router[T], api httpapi.Executor, resolver ViewerResolver, routes RouteConfig) {
+func registerAPI[T any](r router.Router[T], api dashboard.Executor, resolver ViewerResolver, routes RouteConfig) {
 	r.Post(routes.Widgets, router.WrapHandler(func(ctx router.Context) error {
 		var payload dashboard.AddWidgetRequest
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Assign(ctx.Context(), payload); err != nil {
+		reply, err := httpapi.Assign(ctx.Context(), api, payload)
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusCreated, map[string]string{"status": "created"})
+		return ctx.JSON(reply.StatusCode, reply.Payload)
 	}))
 
 	r.Delete(routes.WidgetID, router.WrapHandler(func(ctx router.Context) error {
@@ -116,44 +115,47 @@ func registerAPI[T any](r router.Router[T], api httpapi.Executor, resolver Viewe
 		if id == "" {
 			return respondError(ctx, http.StatusBadRequest, errors.New("widget id is required"))
 		}
-		if err := api.Remove(ctx.Context(), commands.RemoveWidgetInput{WidgetID: id}); err != nil {
+		reply, err := httpapi.Remove(ctx.Context(), api, dashboard.RemoveWidgetInput{WidgetID: id})
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusNoContent, map[string]string{"status": "removed"})
+		return ctx.JSON(reply.StatusCode, reply.Payload)
 	}))
 
 	r.Post(routes.Reorder, router.WrapHandler(func(ctx router.Context) error {
-		var payload commands.ReorderWidgetsInput
+		var payload dashboard.ReorderWidgetsInput
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Reorder(ctx.Context(), payload); err != nil {
+		reply, err := httpapi.Reorder(ctx.Context(), api, payload)
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusOK, map[string]string{"status": "reordered"})
+		return ctx.JSON(reply.StatusCode, reply.Payload)
 	}))
 
 	r.Post(routes.Refresh, router.WrapHandler(func(ctx router.Context) error {
-		var payload commands.RefreshWidgetInput
+		var payload dashboard.RefreshWidgetInput
 		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		if err := api.Refresh(ctx.Context(), payload); err != nil {
+		reply, err := httpapi.Refresh(ctx.Context(), api, payload)
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusAccepted, map[string]string{"status": "queued"})
+		return ctx.JSON(reply.StatusCode, reply.Payload)
 	}))
 
 	r.Post(routes.Preferences, router.WrapHandler(func(ctx router.Context) error {
-		var payload commands.SaveLayoutPreferencesInput
-		if err := json.Unmarshal(ctx.Body(), &payload); err != nil {
+		payload, err := httpapi.PreferencesInputFromJSON(ctx.Body(), resolver(ctx))
+		if err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}
-		payload.Viewer = resolver(ctx)
-		if err := api.Preferences(ctx.Context(), payload); err != nil {
+		reply, err := httpapi.Preferences(ctx.Context(), api, payload)
+		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusOK, map[string]string{"status": "saved"})
+		return ctx.JSON(reply.StatusCode, reply.Payload)
 	}))
 }
 
@@ -209,7 +211,7 @@ func inferLocale(ctx router.Context) string {
 }
 
 func parseAcceptLanguage(header string) string {
-	for _, token := range strings.Split(header, ",") {
+	for token := range strings.SplitSeq(header, ",") {
 		token = strings.TrimSpace(token)
 		if token == "" {
 			continue

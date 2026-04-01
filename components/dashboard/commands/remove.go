@@ -9,12 +9,7 @@ import (
 )
 
 // RemoveWidgetInput identifies the widget instance to remove.
-type RemoveWidgetInput struct {
-	WidgetID string `json:"widget_id"`
-	ActorID  string `json:"actor_id"`
-	UserID   string `json:"user_id"`
-	TenantID string `json:"tenant_id"`
-}
+type RemoveWidgetInput = dashboard.RemoveWidgetInput
 
 // RemoveWidgetCommand removes widget instances through the service and records
 // telemetry for auditing purposes.

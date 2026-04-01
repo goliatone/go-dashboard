@@ -27,7 +27,7 @@ type WidgetManifestDocument struct {
 // ManifestWidget describes a single widget entry within a manifest.
 type ManifestWidget struct {
 	Definition  WidgetDefinition `json:"definition" yaml:"definition"`
-	Provider    ManifestProvider `json:"provider,omitempty" yaml:"provider,omitempty"`
+	Provider    ManifestProvider `json:"provider" yaml:"provider,omitempty"`
 	Maintainers []string         `json:"maintainers,omitempty" yaml:"maintainers,omitempty"`
 	Tags        []string         `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
@@ -137,4 +137,11 @@ func (p ManifestProvider) isZero() bool {
 		p.DocsURL == "" &&
 		len(p.Capabilities) == 0 &&
 		p.Channel == ""
+}
+
+func cloneManifestProvider(in ManifestProvider) ManifestProvider {
+	if len(in.Capabilities) > 0 {
+		in.Capabilities = append([]string{}, in.Capabilities...)
+	}
+	return in
 }

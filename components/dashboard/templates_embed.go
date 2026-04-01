@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"embed"
+	"maps"
 
 	template "github.com/goliatone/go-template"
 )
@@ -55,9 +56,7 @@ func NewTemplateRenderer(options ...TemplateRendererOption) (Renderer, error) {
 	funcMap := map[string]any{
 		"T": makeTemplateTranslationFunc(cfg.translator),
 	}
-	for key, fn := range cfg.funcs {
-		funcMap[key] = fn
-	}
+	maps.Copy(funcMap, cfg.funcs)
 	opts := []template.Option{
 		template.WithFS(embeddedTemplates),
 		template.WithBaseDir("templates"),

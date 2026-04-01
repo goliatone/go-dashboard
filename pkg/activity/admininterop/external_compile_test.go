@@ -15,10 +15,11 @@ func TestExternalModuleCompile(t *testing.T) {
 		t.Fatal("unable to resolve current file path")
 	}
 	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", "..", ".."))
+	goVersion := readModuleGoVersion(t, repoRoot)
 
 	moduleDir := t.TempDir()
 	goMod := "module example.com/dashboardinteroptest\n\n" +
-		"go 1.24.0\n\n" +
+		"go " + goVersion + "\n\n" +
 		"require github.com/goliatone/go-dashboard v0.0.0\n\n" +
 		"replace github.com/goliatone/go-dashboard => " + repoRoot + "\n"
 	if err := os.WriteFile(filepath.Join(moduleDir, "go.mod"), []byte(goMod), 0o644); err != nil {
@@ -62,4 +63,24 @@ func TestInteropCompiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("external go test failed: %v\n%s", err, strings.TrimSpace(string(output)))
 	}
+}
+
+func readModuleGoVersion(t *testing.T, repoRoot string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot, "go.mod"))
+	if err != nil {
+		t.Fatalf("read repo go.mod: %v", err)
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "go ") {
+			continue
+		}
+		version := strings.TrimSpace(strings.TrimPrefix(line, "go "))
+		if version != "" {
+			return version
+		}
+	}
+	t.Fatal("repo go.mod missing go directive")
+	return ""
 }

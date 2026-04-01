@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"maps"
 	"sync"
 
 	dashboard "github.com/goliatone/go-dashboard/components/dashboard"
@@ -74,13 +75,9 @@ func cloneAlerts(report dashboard.AlertTrendsReport) dashboard.AlertTrendsReport
 	out := dashboard.AlertTrendsReport{Service: report.Service, Series: make([]dashboard.AlertSeries, len(report.Series)), Totals: map[string]int{}}
 	for i, series := range report.Series {
 		counts := make(map[string]int, len(series.Counts))
-		for k, v := range series.Counts {
-			counts[k] = v
-		}
+		maps.Copy(counts, series.Counts)
 		out.Series[i] = dashboard.AlertSeries{Day: series.Day, Counts: counts}
 	}
-	for k, v := range report.Totals {
-		out.Totals[k] = v
-	}
+	maps.Copy(out.Totals, report.Totals)
 	return out
 }
