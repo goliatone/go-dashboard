@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.8.0](https://github.com/goliatone/go-dashboard/compare/v0.7.0...v0.8.0) - (2026-04-01)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.8.0 ([008f9cc](https://github.com/goliatone/go-dashboard/commit/008f9cc1b4f1b8dffd05062a3b938b7a08de2aa4))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Service http API ([11058ed](https://github.com/goliatone/go-dashboard/commit/11058ed4c288667621b0015492b93eeb2264d54a))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.7.0 ([64daa65](https://github.com/goliatone/go-dashboard/commit/64daa65a46f48ba952cbf9b24fec6b145a87f7fb))  - (goliatone)
+
 # [0.7.0](https://github.com/goliatone/go-dashboard/compare/v0.6.0...v0.7.0) - (2026-02-09)
 
 ## <!-- 13 -->📦 Bumps
