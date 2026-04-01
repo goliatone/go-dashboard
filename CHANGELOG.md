@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.9.0](https://github.com/goliatone/go-dashboard/compare/v0.8.0...v0.9.0) - (2026-04-01)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.9.0 ([d455692](https://github.com/goliatone/go-dashboard/commit/d455692de61e42424bbf3a8fd96f4ab88892e6ae))  - (goliatone)
+
+## <!-- 2 -->🚜 Refactor
+
+- Admin alignment ([f3234f3](https://github.com/goliatone/go-dashboard/commit/f3234f316364c74e7fc01db6098c88de25bb9bf1))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.8.0 ([82b89ad](https://github.com/goliatone/go-dashboard/commit/82b89ad1997dfe6e9053ce17d1022ae20eba3c09))  - (goliatone)
+
 # [0.8.0](https://github.com/goliatone/go-dashboard/compare/v0.7.0...v0.8.0) - (2026-04-01)
 
 ## <!-- 13 -->📦 Bumps
