@@ -1,7 +1,7 @@
 <div class="widget widget--analytics widget--cohort">
   <header>
     <h3>{{ T("dashboard.widget.cohort_overview.title", locale, "Cohort Overview") }}</h3>
-    <small>{{ widget.data.interval or "weekly" }} · {{ T("dashboard.widget.cohort_overview.metric_label", locale, "Metric") }}: {{ widget.data.metric or "retained" }}</small>
+    <small>{{ coalesce(widget.data.interval, "weekly") }} · {{ T("dashboard.widget.cohort_overview.metric_label", locale, "Metric") }}: {{ coalesce(widget.data.metric, "retained") }}</small>
   </header>
   <div class="cohort-list">
     {% for row in widget.data.rows %}

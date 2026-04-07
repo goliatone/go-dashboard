@@ -3,6 +3,7 @@ package gorouter
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -156,6 +157,18 @@ func TestDefaultViewerResolverUsesAcceptLanguage(t *testing.T) {
 	if service.lastViewer.Locale != "es-mx" {
 		t.Fatalf("expected locale inferred from Accept-Language, got %q", service.lastViewer.Locale)
 	}
+
+	var payload map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode layout response: %v", err)
+	}
+	if _, ok := payload["ordered_areas"]; ok {
+		t.Fatalf("expected JSON route to return typed page payload, got %+v", payload)
+	}
+	areas, ok := payload["areas"].([]any)
+	if !ok || len(areas) == 0 {
+		t.Fatalf("expected typed page areas array, got %+v", payload["areas"])
+	}
 }
 
 func TestRegisterWithCustomRoutes(t *testing.T) {
@@ -227,6 +240,41 @@ func TestRegisterWithCustomRoutes(t *testing.T) {
 	}
 }
 
+func TestPreferencesRouteAcceptsLegacyLayoutCompatibilityPayload(t *testing.T) {
+	server := router.NewFiberAdapter()
+	appRouter := server.Router()
+	service := &stubLayoutResolver{layout: dashboard.Layout{Areas: map[string][]dashboard.WidgetInstance{}}}
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service:  service,
+		Renderer: &stubRenderer{},
+	})
+
+	cfg := Config[*fiber.App]{
+		Router:     appRouter,
+		Controller: controller,
+		API:        noopExecutor{},
+	}
+	if err := Register(cfg); err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	fiberAdapter, ok := server.(interface {
+		WrappedRouter() *fiber.App
+	})
+	if !ok {
+		t.Fatalf("adapter does not expose wrapped router")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/dashboard/preferences", bytes.NewBufferString(`{"layout":[{"id":"w1","area":"admin.dashboard.main","position":0,"span":6}]}`))
+	resp, err := fiberAdapter.WrappedRouter().Test(req)
+	if err != nil {
+		t.Fatalf("preferences request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected legacy compatibility payload to return 200, got %d", resp.StatusCode)
+	}
+}
+
 type stubLayoutResolver struct {
 	layout     dashboard.Layout
 	err        error
@@ -242,7 +290,7 @@ type stubRenderer struct {
 	calls int
 }
 
-func (s *stubRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
+func (s *stubRenderer) RenderPage(name string, page dashboard.Page, out ...io.Writer) (string, error) {
 	s.calls++
 	if len(out) > 0 && out[0] != nil {
 		out[0].Write([]byte("ok"))

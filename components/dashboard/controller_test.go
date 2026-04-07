@@ -3,7 +3,9 @@ package dashboard
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
+	"reflect"
 	"testing"
 )
 
@@ -18,15 +20,13 @@ func (s *stubLayoutResolver) ConfigureLayout(ctx context.Context, viewer ViewerC
 
 type stubRenderer struct {
 	lastTemplate string
-	lastPayload  map[string]any
+	lastPage     Page
 	err          error
 }
 
-func (r *stubRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
+func (r *stubRenderer) RenderPage(name string, page Page, out ...io.Writer) (string, error) {
 	r.lastTemplate = name
-	if payload, ok := data.(map[string]any); ok {
-		r.lastPayload = payload
-	}
+	r.lastPage = page
 	if len(out) > 0 && out[0] != nil {
 		out[0].Write([]byte("<html></html>"))
 	}
@@ -59,6 +59,32 @@ func TestControllerRenderTemplate(t *testing.T) {
 	}
 	if buf.Len() == 0 {
 		t.Fatalf("expected rendered output")
+	}
+}
+
+func TestControllerPageReturnsTypedPage(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main", Metadata: map[string]any{"data": WidgetData{"value": 42}}},
+				},
+			},
+		},
+	}
+	controller := NewController(ControllerOptions{Service: service})
+	page, err := controller.Page(context.Background(), ViewerContext{Locale: "es"})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	if page.Locale != "es" {
+		t.Fatalf("expected page locale propagated, got %q", page.Locale)
+	}
+	if len(page.Areas) != 3 || page.Areas[0].Slot != "main" {
+		t.Fatalf("expected canonical ordered page areas, got %+v", page.Areas)
+	}
+	if len(page.Areas[0].Widgets) != 1 || page.Areas[0].Widgets[0].Definition != "admin.widget.user_stats" {
+		t.Fatalf("expected typed widget frame on page, got %+v", page.Areas[0].Widgets)
 	}
 }
 
@@ -243,7 +269,7 @@ func TestControllerSupportsCustomAreas(t *testing.T) {
 	}
 }
 
-func TestControllerPayloadDecoratorAppliesToLayoutAndRenderTemplate(t *testing.T) {
+func TestControllerPayloadDecoratorAppliesToLegacyLayoutPayloadOnly(t *testing.T) {
 	service := &stubLayoutResolver{
 		layout: Layout{
 			Areas: map[string][]WidgetInstance{
@@ -276,7 +302,305 @@ func TestControllerPayloadDecoratorAppliesToLayoutAndRenderTemplate(t *testing.T
 	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
 		t.Fatalf("RenderTemplate returned error: %v", err)
 	}
-	if renderer.lastPayload["viewer_id"] != "user-1" || renderer.lastPayload["decorated"] != true {
-		t.Fatalf("expected decorated render payload, got %+v", renderer.lastPayload)
+	if renderer.lastPage.Title != "Dashboard" {
+		t.Fatalf("expected HTML rendering to receive the canonical typed page, got %+v", renderer.lastPage)
+	}
+}
+
+func TestControllerPageDecoratorAppliesBeforeHTMLAndJSONAdapters(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats"},
+				},
+			},
+		},
+	}
+	renderer := &stubRenderer{}
+	controller := NewController(ControllerOptions{
+		Service:  service,
+		Renderer: renderer,
+		PageDecorator: func(_ context.Context, viewer ViewerContext, page Page) (Page, error) {
+			page.Title = "Decorated " + viewer.UserID
+			page.Areas[0].Title = "Primary"
+			return page, nil
+		},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	if page.Title != "Decorated user-1" || page.Areas[0].Title != "Primary" {
+		t.Fatalf("expected page decorator applied to typed page, got %+v", page)
+	}
+
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	if payload["title"] != "Decorated user-1" {
+		t.Fatalf("expected layout payload to derive from decorated page, got %+v", payload)
+	}
+	main := payload["areas"].(map[string]any)["main"].(map[string]any)
+	if main["title"] != "Primary" {
+		t.Fatalf("expected area title preserved through payload adapter, got %+v", main)
+	}
+
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
+		t.Fatalf("RenderTemplate returned error: %v", err)
+	}
+	if renderer.lastPage.Title != "Decorated user-1" {
+		t.Fatalf("expected HTML path to render the decorated typed page, got %+v", renderer.lastPage)
+	}
+}
+
+func TestControllerLegacyPayloadAdapterDerivesFromTypedPage(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{
+						ID:           "w1",
+						DefinitionID: "admin.widget.user_stats",
+						AreaCode:     "admin.dashboard.main",
+						Configuration: map[string]any{
+							"metric": "signups",
+						},
+						Metadata: map[string]any{
+							"data": WidgetData{"value": 7},
+							"layout": map[string]any{
+								"row":     1,
+								"column":  2,
+								"width":   6,
+								"columns": 6,
+							},
+							"source": "fixture",
+						},
+					},
+				},
+			},
+			Theme: &ThemeSelection{Name: "admin", Variant: "dark"},
+		},
+	}
+	controller := NewController(ControllerOptions{Service: service})
+	viewer := ViewerContext{Locale: "fr"}
+
+	page, err := controller.pageForViewer(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("pageForViewer returned error: %v", err)
+	}
+	payload, err := controller.LayoutPayload(context.Background(), viewer)
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	if !reflect.DeepEqual(page.LegacyPayload(), payload) {
+		t.Fatalf("expected layout payload adapter to derive from typed page")
+	}
+}
+
+func TestControllerRenderPageUsesTypedPageContract(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main"},
+				},
+			},
+		},
+	}
+	renderer := &stubRenderer{}
+	controller := NewController(ControllerOptions{
+		Service:  service,
+		Renderer: renderer,
+	})
+
+	var buf bytes.Buffer
+	if err := controller.RenderPage(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
+		t.Fatalf("RenderPage returned error: %v", err)
+	}
+	page := renderer.lastPage
+	if len(page.Areas) == 0 || page.Areas[0].Widgets[0].ID != "w1" {
+		t.Fatalf("expected typed page passed to renderer, got %+v", page)
+	}
+}
+
+func TestControllerPageAcceptsPreSerializedViewModelMetadata(t *testing.T) {
+	controller := NewController(ControllerOptions{
+		Service: &stubLayoutResolver{layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{
+						ID:           "chart-1",
+						DefinitionID: "admin.widget.bar_chart",
+						Metadata: map[string]any{
+							widgetViewModelMetadataKey: map[string]any{
+								"chart_html": "<div>ok</div>",
+								"theme":      "wonderland",
+							},
+						},
+					},
+				},
+			},
+		}},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+
+	main, ok := page.Area("main")
+	if !ok || len(main.Widgets) != 1 {
+		t.Fatalf("expected main area widget, got %+v", page.Areas)
+	}
+	data, ok := main.Widgets[0].Data.(map[string]any)
+	if !ok {
+		t.Fatalf("expected pre-serialized metadata to normalize into object data, got %T", main.Widgets[0].Data)
+	}
+	if data["theme"] != "wonderland" || data["chart_html"] != "<div>ok</div>" {
+		t.Fatalf("expected serialized metadata preserved, got %+v", data)
+	}
+}
+
+func TestControllerHTMLAndJSONDeriveFromSameTypedPageSource(t *testing.T) {
+	service := &stubLayoutResolver{
+		layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{ID: "w1", DefinitionID: "admin.widget.user_stats", AreaCode: "admin.dashboard.main", Metadata: map[string]any{"data": WidgetData{"value": 7}}},
+				},
+			},
+		},
+	}
+	renderer := &stubRenderer{}
+	controller := NewController(ControllerOptions{
+		Service:  service,
+		Renderer: renderer,
+		PageDecorator: func(_ context.Context, _ ViewerContext, page Page) (Page, error) {
+			page.Description = "Shared"
+			return page, nil
+		},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
+		t.Fatalf("RenderTemplate returned error: %v", err)
+	}
+	if !reflect.DeepEqual(page.LegacyPayload(), payload) {
+		t.Fatalf("expected JSON payload to derive from same typed page source")
+	}
+	if !reflect.DeepEqual(page, renderer.lastPage) {
+		t.Fatalf("expected HTML path to render the same typed page source")
+	}
+}
+
+func TestPageJSONUsesCanonicalTypedContract(t *testing.T) {
+	page := Page{
+		Title:       "Dashboard",
+		Description: "Admin overview",
+		Locale:      "es",
+		Areas: []PageArea{
+			{
+				Slot:  "hero",
+				Code:  "custom.hero",
+				Order: 1,
+				Widgets: []WidgetFrame{
+					{
+						ID:         "hero-1",
+						Definition: "admin.widget.hero",
+						Name:       "Hero KPI",
+						Template:   "widgets/hero.html",
+						Area:       "custom.hero",
+						Span:       8,
+						Config:     map[string]any{"metric": "sales"},
+						Data:       map[string]any{"value": 42},
+						Meta: WidgetMeta{
+							Order: 1,
+							Layout: &WidgetLayout{
+								Row:     0,
+								Column:  0,
+								Width:   8,
+								Columns: 8,
+							},
+							Extensions: map[string]json.RawMessage{
+								"source": json.RawMessage(`"fixture"`),
+							},
+						},
+					},
+				},
+			},
+			{
+				Slot:  "footer",
+				Code:  "custom.footer",
+				Order: 2,
+			},
+		},
+		Theme: &ThemeSelection{
+			Name:    "admin",
+			Variant: "dark",
+			Tokens: map[string]string{
+				"color-primary": "#fff",
+			},
+			Assets: ThemeAssets{
+				Values: map[string]string{
+					"logo": "img/logo.svg",
+				},
+				Prefix: "https://cdn.example.com",
+			},
+			ChartTheme: "wonderland",
+		},
+	}
+
+	raw, err := json.Marshal(page)
+	if err != nil {
+		t.Fatalf("json.Marshal returned error: %v", err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		t.Fatalf("json.Unmarshal returned error: %v", err)
+	}
+	if _, ok := payload["ordered_areas"]; ok {
+		t.Fatalf("expected canonical page json to preserve ordering via areas only")
+	}
+	areas, ok := payload["areas"].([]any)
+	if !ok {
+		t.Fatalf("expected areas array, got %T", payload["areas"])
+	}
+	if len(areas) != 2 {
+		t.Fatalf("expected 2 ordered areas, got %d", len(areas))
+	}
+	firstArea := areas[0].(map[string]any)
+	secondArea := areas[1].(map[string]any)
+	if firstArea["slot"] != "hero" || secondArea["slot"] != "footer" {
+		t.Fatalf("expected areas slice ordering preserved, got %+v", areas)
+	}
+	theme := payload["theme"].(map[string]any)
+	if theme["variant"] != "dark" {
+		t.Fatalf("expected typed page theme to reuse ThemeSelection shape, got %#v", theme["variant"])
+	}
+	if theme["chart_theme"] != "wonderland" {
+		t.Fatalf("expected chart theme to serialize from ThemeSelection, got %#v", theme["chart_theme"])
+	}
+	widgets := firstArea["widgets"].([]any)
+	widget := widgets[0].(map[string]any)
+	meta := widget["meta"].(map[string]any)
+	if meta["order"].(float64) != 1 {
+		t.Fatalf("expected widget meta order in canonical json, got %#v", meta["order"])
+	}
+	extensions := meta["extensions"].(map[string]any)
+	if extensions["source"] != "fixture" {
+		t.Fatalf("expected widget extensions encoded through typed meta, got %#v", extensions["source"])
 	}
 }

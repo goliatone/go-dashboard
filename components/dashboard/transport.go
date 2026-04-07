@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"sort"
 )
 
 // RemoveWidgetInput identifies the widget instance to remove.
@@ -27,12 +28,32 @@ type RefreshWidgetInput struct {
 	Event WidgetEvent `json:"event"`
 }
 
-// SaveLayoutPreferencesInput captures viewer overrides for layout customization.
+// SaveLayoutPreferencesInput is the canonical typed transport contract for
+// persisting dashboard layout overrides.
 type SaveLayoutPreferencesInput struct {
 	Viewer        ViewerContext               `json:"viewer"`
 	AreaOrder     map[string][]string         `json:"area_order"`
 	LayoutRows    map[string][]LayoutRowInput `json:"layout_rows"`
 	HiddenWidgets []string                    `json:"hidden_widget_ids"`
+}
+
+// LegacyLayoutPreferencesInput is a temporary migration adapter for historical
+// layout-array preference payloads. Remove once callers stop sending
+// `{"layout":[...]}` bodies.
+type LegacyLayoutPreferencesInput struct {
+	Layout []LegacyLayoutWidgetInput `json:"layout"`
+}
+
+// LegacyLayoutWidgetInput captures the legacy layout-only transport shape.
+type LegacyLayoutWidgetInput struct {
+	ID       string `json:"id"`
+	Area     string `json:"area,omitempty"`
+	AreaCode string `json:"area_code,omitempty"`
+	Position int    `json:"position,omitempty"`
+	Span     int    `json:"span,omitempty"`
+	Width    int    `json:"width,omitempty"`
+	Hidden   bool   `json:"hidden,omitempty"`
+	Locale   string `json:"locale,omitempty"`
 }
 
 // LayoutRowInput represents widgets that share the same row in a transport payload.
@@ -44,6 +65,80 @@ type LayoutRowInput struct {
 type LayoutWidgetInput struct {
 	ID    string `json:"id"`
 	Width int    `json:"width"`
+}
+
+// ToSaveLayoutPreferencesInput converts the legacy layout-array transport shape
+// into the canonical typed preference input.
+func (input LegacyLayoutPreferencesInput) ToSaveLayoutPreferencesInput(viewer ViewerContext) SaveLayoutPreferencesInput {
+	type placedWidget struct {
+		index  int
+		id     string
+		width  int
+		hidden bool
+		pos    int
+	}
+	grouped := map[string][]placedWidget{}
+	hiddenIDs := make([]string, 0, len(input.Layout))
+	for idx, widget := range input.Layout {
+		areaCode := widget.AreaCode
+		if areaCode == "" {
+			areaCode = widget.Area
+		}
+		if widget.ID == "" || areaCode == "" {
+			continue
+		}
+		width := widget.Width
+		if width <= 0 {
+			width = widget.Span
+		}
+		if width <= 0 {
+			width = 12
+		}
+		if viewer.Locale == "" && widget.Locale != "" {
+			viewer.Locale = widget.Locale
+		}
+		grouped[areaCode] = append(grouped[areaCode], placedWidget{
+			index:  idx,
+			id:     widget.ID,
+			width:  width,
+			hidden: widget.Hidden,
+			pos:    widget.Position,
+		})
+		if widget.Hidden {
+			hiddenIDs = append(hiddenIDs, widget.ID)
+		}
+	}
+
+	areaOrder := make(map[string][]string, len(grouped))
+	layoutRows := make(map[string][]LayoutRowInput, len(grouped))
+	for areaCode, widgets := range grouped {
+		sort.SliceStable(widgets, func(i, j int) bool {
+			if widgets[i].pos == widgets[j].pos {
+				return widgets[i].index < widgets[j].index
+			}
+			return widgets[i].pos < widgets[j].pos
+		})
+		orderedIDs := make([]string, 0, len(widgets))
+		rows := make([]LayoutRowInput, 0, len(widgets))
+		for _, widget := range widgets {
+			orderedIDs = append(orderedIDs, widget.id)
+			rows = append(rows, LayoutRowInput{
+				Widgets: []LayoutWidgetInput{{
+					ID:    widget.id,
+					Width: widget.width,
+				}},
+			})
+		}
+		areaOrder[areaCode] = orderedIDs
+		layoutRows[areaCode] = rows
+	}
+
+	return SaveLayoutPreferencesInput{
+		Viewer:        viewer,
+		AreaOrder:     areaOrder,
+		LayoutRows:    layoutRows,
+		HiddenWidgets: hiddenIDs,
+	}
 }
 
 // Executor defines a router-agnostic command surface that transports can call.

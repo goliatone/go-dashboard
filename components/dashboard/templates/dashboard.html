@@ -18,7 +18,7 @@
 {% endif %}
 <div class="dashboard" {% if theme and theme.variant %}data-theme="{{ theme.variant }}"{% endif %}>
   <div class="dashboard__header">
-    <h1>{{ T("dashboard.page.title", locale, title or "Dashboard") }}</h1>
+    <h1>{{ T("dashboard.page.title", locale, coalesce(title, "Dashboard")) }}</h1>
     {% if description %}
     <p>{{ T("dashboard.page.description", locale, description) }}</p>
     {% endif %}

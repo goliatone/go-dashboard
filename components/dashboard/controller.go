@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -18,10 +19,16 @@ type Controller struct {
 	renderer         Renderer
 	template         string
 	areas            []AreaSlot
+	pageDecorator    PageDecorator
 	payloadDecorator PayloadDecorator
 }
 
-// PayloadDecorator mutates a controller payload after the canonical payload is built.
+// PageDecorator mutates the canonical typed page before transport-specific
+// adapters run.
+type PageDecorator func(ctx context.Context, viewer ViewerContext, page Page) (Page, error)
+
+// PayloadDecorator mutates a controller payload after the canonical typed page
+// is built and adapted. It is a temporary migration hook only.
 type PayloadDecorator func(ctx context.Context, viewer ViewerContext, payload map[string]any) (map[string]any, error)
 
 // ControllerOptions configures the HTTP controller.
@@ -30,6 +37,7 @@ type ControllerOptions struct {
 	Renderer         Renderer
 	Template         string
 	Areas            []AreaSlot
+	PageDecorator    PageDecorator
 	PayloadDecorator PayloadDecorator
 }
 
@@ -51,6 +59,7 @@ func NewController(opts ControllerOptions) *Controller {
 		renderer:         opts.Renderer,
 		template:         templateName,
 		areas:            normalizeAreaSlots(opts.Areas),
+		pageDecorator:    opts.PageDecorator,
 		payloadDecorator: opts.PayloadDecorator,
 	}
 }
@@ -63,100 +72,80 @@ func (c *Controller) Render(ctx context.Context, viewer ViewerContext) (Layout, 
 	return c.service.ConfigureLayout(ctx, viewer)
 }
 
-func (c *Controller) payloadFromLayout(layout Layout) map[string]any {
-	theme := themePayload(layout.Theme)
-	areaMap := make(map[string]any, len(c.areas))
-	ordered := make([]map[string]any, 0, len(c.areas))
-	for _, section := range c.areas {
-		payload := c.areaPayload(section.Code, layout.Areas[section.Code], theme)
-		payload["slot"] = section.Slot
-		areaMap[section.Slot] = payload
-		ordered = append(ordered, payload)
+func (c *Controller) pageFromLayout(layout Layout, viewer ViewerContext) (Page, error) {
+	page := Page{
+		Title:       "Dashboard",
+		Description: "Admin overview",
+		Locale:      viewer.Locale,
+		Theme:       layout.Theme,
+		Areas:       make([]PageArea, 0, len(c.areas)),
 	}
-
-	response := map[string]any{
-		"title":         "Dashboard",
-		"description":   "Admin overview",
-		"areas":         areaMap,
-		"ordered_areas": ordered,
-	}
-	if theme != nil {
-		response["theme"] = theme
-	}
-	return response
-}
-
-func (c *Controller) areaPayload(code string, widgets []WidgetInstance, theme map[string]any) map[string]any {
-	return map[string]any{
-		"code":    code,
-		"widgets": c.widgetsPayload(widgets, theme),
-	}
-}
-
-func (c *Controller) widgetsPayload(instances []WidgetInstance, theme map[string]any) []map[string]any {
-	if len(instances) == 0 {
-		return nil
-	}
-	widgets := make([]map[string]any, 0, len(instances))
-	for _, inst := range instances {
-		var data any
-		if inst.Metadata != nil {
-			data = normalizeWidgetPayloadData(inst.Metadata["data"])
+	for idx, section := range c.areas {
+		widgets, err := c.widgetFrames(section.Code, layout.Areas[section.Code])
+		if err != nil {
+			return Page{}, err
 		}
-		widgets = append(widgets, map[string]any{
-			"id":         inst.ID,
-			"definition": inst.DefinitionID,
-			"template":   templatePathFor(inst.DefinitionID),
-			"config":     inst.Configuration,
-			"data":       data,
-			"area":       inst.AreaCode,
-			"area_code":  inst.AreaCode,
-			"span":       widgetSpan(inst.Metadata),
-			"hidden":     widgetHidden(inst.Metadata),
-			"metadata":   inst.Metadata,
-			"theme":      theme,
+		page.Areas = append(page.Areas, PageArea{
+			Slot:    section.Slot,
+			Code:    section.Code,
+			Order:   idx + 1,
+			Widgets: widgets,
 		})
 	}
-	return widgets
+	return page, nil
 }
 
-func normalizeWidgetPayloadData(data any) any {
-	switch typed := data.(type) {
-	case WidgetData:
-		return map[string]any(typed)
-	default:
-		return data
+func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]WidgetFrame, error) {
+	if len(instances) == 0 {
+		return nil, nil
 	}
+	widgets := make([]WidgetFrame, 0, len(instances))
+	for idx, inst := range instances {
+		data, dataPresent, err := resolveWidgetFrameData(inst.Metadata)
+		if err != nil {
+			return nil, err
+		}
+		areaCode := inst.AreaCode
+		if areaCode == "" {
+			areaCode = code
+		}
+		widgets = append(widgets, WidgetFrame{
+			ID:         inst.ID,
+			Definition: inst.DefinitionID,
+			Template:   templatePathFor(inst.DefinitionID),
+			Config:     inst.Configuration,
+			Data:       data,
+			Area:       areaCode,
+			Span:       widgetSpan(inst.Metadata),
+			Hidden:     widgetHidden(inst.Metadata),
+			Meta: WidgetMeta{
+				Order:         idx + 1,
+				Layout:        widgetLayout(inst.Metadata),
+				Extensions:    widgetExtensions(inst.Metadata),
+				dataPresent:   dataPresent,
+				hiddenPresent: hasWidgetMetadataKey(inst.Metadata, "hidden"),
+			},
+		})
+	}
+	return widgets, nil
 }
 
 func (c *Controller) templatePath() string {
 	return c.template
 }
 
-// RenderTemplate renders the dashboard HTML into the provided writer.
+// RenderTemplate renders the dashboard HTML into the provided writer through the
+// canonical typed page renderer boundary.
 func (c *Controller) RenderTemplate(ctx context.Context, viewer ViewerContext, out io.Writer) error {
-	if c.renderer == nil {
-		return fmt.Errorf("dashboard: renderer not configured")
-	}
-	payload, err := c.payloadForViewer(ctx, viewer)
-	if err != nil {
-		return err
-	}
-	_, err = c.renderer.Render(c.templatePath(), payload, out)
-	return err
+	return c.RenderPage(ctx, viewer, out)
 }
 
 func (c *Controller) payloadForViewer(ctx context.Context, viewer ViewerContext) (map[string]any, error) {
-	layout, err := c.Render(ctx, viewer)
+	page, err := c.Page(ctx, viewer)
 	if err != nil {
 		return nil, err
 	}
-	payload := c.payloadFromLayout(layout)
-	if viewer.Locale != "" {
-		payload["locale"] = viewer.Locale
-	} else {
-		payload["locale"] = ""
-	}
+	payload := page.LegacyPayload()
 	if c.payloadDecorator != nil {
 		decorated, err := c.payloadDecorator(ctx, viewer, payload)
 		if err != nil {
@@ -169,44 +158,47 @@ func (c *Controller) payloadForViewer(ctx context.Context, viewer ViewerContext)
 	return payload, nil
 }
 
-// LayoutPayload returns a JSON-ready payload with snake_case keys for the viewer.
+// LayoutPayload returns the legacy JSON-ready payload adapter derived from the
+// canonical typed page.
 func (c *Controller) LayoutPayload(ctx context.Context, viewer ViewerContext) (map[string]any, error) {
 	return c.payloadForViewer(ctx, viewer)
 }
 
-func themePayload(selection *ThemeSelection) map[string]any {
-	if selection == nil {
-		return nil
+// Page resolves and decorates the canonical typed page for the current viewer.
+func (c *Controller) Page(ctx context.Context, viewer ViewerContext) (Page, error) {
+	layout, err := c.Render(ctx, viewer)
+	if err != nil {
+		return Page{}, err
 	}
-	payload := map[string]any{}
-	if selection.Name != "" {
-		payload["name"] = selection.Name
+	page, err := c.pageFromLayout(layout, viewer)
+	if err != nil {
+		return Page{}, err
 	}
-	if selection.Variant != "" {
-		payload["variant"] = selection.Variant
+	return c.decoratePage(ctx, viewer, page)
+}
+
+// RenderPage resolves and renders the typed dashboard page directly.
+func (c *Controller) RenderPage(ctx context.Context, viewer ViewerContext, out io.Writer) error {
+	if c.renderer == nil {
+		return fmt.Errorf("dashboard: renderer not configured")
 	}
-	if len(selection.Tokens) > 0 {
-		payload["tokens"] = selection.Tokens
+	page, err := c.Page(ctx, viewer)
+	if err != nil {
+		return err
 	}
-	if cssVars := selection.CSSVariables(); len(cssVars) > 0 {
-		payload["css_vars"] = cssVars
+	_, err = c.renderer.RenderPage(c.templatePath(), page, out)
+	return err
+}
+
+func (c *Controller) decoratePage(ctx context.Context, viewer ViewerContext, page Page) (Page, error) {
+	if c.pageDecorator == nil {
+		return page, nil
 	}
-	if inline := selection.CSSVariablesInline(); inline != "" {
-		payload["css_vars_inline"] = inline
+	decorated, err := c.pageDecorator(ctx, viewer, page)
+	if err != nil {
+		return Page{}, err
 	}
-	if selection.Assets.Prefix != "" {
-		payload["asset_prefix"] = selection.Assets.Prefix
-	}
-	if assets := selection.Assets.Resolved(); len(assets) > 0 {
-		payload["assets"] = assets
-	}
-	if len(selection.Templates) > 0 {
-		payload["templates"] = selection.Templates
-	}
-	if selection.ChartTheme != "" {
-		payload["chart_theme"] = selection.ChartTheme
-	}
-	return payload
+	return decorated, nil
 }
 
 func templatePathFor(definition string) string {
@@ -274,4 +266,106 @@ func widgetHidden(metadata map[string]any) bool {
 	}
 	hidden, _ := metadata["hidden"].(bool)
 	return hidden
+}
+
+func widgetLayout(metadata map[string]any) *WidgetLayout {
+	if metadata == nil {
+		return nil
+	}
+	raw, ok := metadata["layout"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	layout := &WidgetLayout{
+		Width:   widgetSpan(metadata),
+		Columns: widgetSpan(metadata),
+	}
+	layout.Row = intValue(raw["row"])
+	layout.Column = intValue(raw["column"])
+	if width := intValue(raw["width"]); width > 0 {
+		layout.Width = width
+	}
+	if columns := intValue(raw["columns"]); columns > 0 {
+		layout.Columns = columns
+	} else {
+		layout.Columns = layout.Width
+	}
+	return layout
+}
+
+func widgetExtensions(metadata map[string]any) map[string]json.RawMessage {
+	if len(metadata) == 0 {
+		return nil
+	}
+	extensions := map[string]json.RawMessage{}
+	for key, value := range metadata {
+		switch key {
+		case "data", "layout", "hidden":
+			continue
+		case widgetViewModelMetadataKey:
+			continue
+		}
+		raw, err := json.Marshal(value)
+		if err != nil {
+			continue
+		}
+		extensions[key] = raw
+	}
+	if len(extensions) == 0 {
+		return nil
+	}
+	return extensions
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
+}
+
+func hasWidgetMetadataKey(metadata map[string]any, key string) bool {
+	if len(metadata) == 0 {
+		return false
+	}
+	_, ok := metadata[key]
+	return ok
+}
+
+func (c *Controller) pageForViewer(ctx context.Context, viewer ViewerContext) (Page, error) {
+	return c.Page(ctx, viewer)
+}
+
+func resolveWidgetFrameData(metadata map[string]any) (any, bool, error) {
+	if len(metadata) == 0 {
+		return nil, false, nil
+	}
+	if rawView, ok := metadata[widgetViewModelMetadataKey]; ok {
+		if view, ok := rawView.(WidgetViewModel); ok {
+			serialized, err := view.Serialize()
+			if err != nil {
+				return nil, true, err
+			}
+			return normalizeWidgetFrameData(serialized), true, nil
+		}
+		return normalizeWidgetFrameData(rawView), true, nil
+	}
+	if rawData, ok := metadata["data"]; ok {
+		return normalizeWidgetFrameData(rawData), true, nil
+	}
+	return nil, false, nil
 }

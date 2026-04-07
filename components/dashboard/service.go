@@ -71,7 +71,11 @@ func NewService(opts Options) *Service {
 		act:  newActivityEmitter(opts),
 	}
 	if opts.Providers != nil && opts.ActivityFeed != nil {
-		_ = opts.Providers.RegisterProvider("admin.widget.recent_activity", newRecentActivityProvider(opts.ActivityFeed))
+		if registry, ok := opts.Providers.(*Registry); ok {
+			_ = registry.registerRuntime("admin.widget.recent_activity", newRecentActivityRuntime(opts.ActivityFeed))
+		} else {
+			_ = opts.Providers.RegisterProvider("admin.widget.recent_activity", newRecentActivityProvider(opts.ActivityFeed))
+		}
 	}
 	return svc
 }
@@ -347,14 +351,25 @@ func (s *Service) ReorderWidgets(ctx context.Context, areaCode string, widgetIDs
 
 // ConfigureLayout resolves widgets for each dashboard area respecting preferences + auth.
 func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (Layout, error) {
-	store, err := s.widgetStore()
+	layout, _, err := s.resolveLayoutState(ctx, viewer)
 	if err != nil {
 		return Layout{}, err
+	}
+	s.recordTelemetry(ctx, "dashboard.layout.resolve", map[string]any{
+		"viewer": viewer.UserID,
+	})
+	return cloneLayout(layout), nil
+}
+
+func (s *Service) resolveLayoutState(ctx context.Context, viewer ViewerContext) (Layout, LayoutOverrides, error) {
+	store, err := s.widgetStore()
+	if err != nil {
+		return Layout{}, LayoutOverrides{}, err
 	}
 	theme := s.resolveTheme(ctx, viewer)
 	overrides, err := s.opts.PreferenceStore.LayoutOverrides(ctx, viewer)
 	if err != nil {
-		return Layout{}, err
+		return Layout{}, LayoutOverrides{}, err
 	}
 	layout := Layout{
 		Areas: make(map[string][]WidgetInstance),
@@ -367,7 +382,7 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 			Locale:   viewer.Locale,
 		})
 		if err != nil {
-			return Layout{}, err
+			return Layout{}, LayoutOverrides{}, err
 		}
 		for i := range resolved.Widgets {
 			resolved.Widgets[i].AreaCode = area
@@ -377,10 +392,7 @@ func (s *Service) ConfigureLayout(ctx context.Context, viewer ViewerContext) (La
 		withLayout := applyRowMetadata(ordered, overrides.AreaRows[area])
 		layout.Areas[area] = applyHiddenFilter(withLayout, overrides.HiddenWidgets)
 	}
-	s.recordTelemetry(ctx, "dashboard.layout.resolve", map[string]any{
-		"viewer": viewer.UserID,
-	})
-	return layout, nil
+	return layout, cloneLayoutOverrides(overrides), nil
 }
 
 // ResolveArea retrieves a single area layout for the viewer.
@@ -476,11 +488,11 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 	}
 	enriched := make([]WidgetInstance, len(widgets))
 	copy(enriched, widgets)
+	type runtimeRegistry interface {
+		widgetRuntime(code string) (widgetSpecRuntime, bool)
+	}
+	registry, _ := s.opts.Providers.(runtimeRegistry)
 	for i, inst := range enriched {
-		provider, ok := s.opts.Providers.Provider(inst.DefinitionID)
-		if !ok || provider == nil {
-			continue
-		}
 		var options map[string]any
 		if s.opts.ScriptNonce != nil {
 			if nonce := strings.TrimSpace(s.opts.ScriptNonce(ctx)); nonce != "" {
@@ -489,13 +501,37 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 				}
 			}
 		}
-		data, err := provider.Fetch(ctx, WidgetContext{
+		meta := WidgetContext{
 			Instance:   inst,
 			Viewer:     viewer,
 			Translator: s.opts.Translation,
 			Options:    options,
 			Theme:      theme,
-		})
+		}
+		var (
+			view WidgetViewModel
+			err  error
+		)
+		if registry != nil {
+			if runtime, ok := registry.widgetRuntime(inst.DefinitionID); ok && runtime != nil {
+				var resolved ResolvedWidget
+				resolved, err = runtime.Resolve(ctx, meta)
+				if err == nil {
+					view = resolved.View
+				}
+			}
+		}
+		if view == nil && err == nil {
+			provider, ok := s.opts.Providers.Provider(inst.DefinitionID)
+			if !ok || provider == nil {
+				continue
+			}
+			var data WidgetData
+			data, err = provider.Fetch(ctx, meta)
+			if err == nil {
+				view = data
+			}
+		}
 		if err != nil {
 			s.recordTelemetry(ctx, "dashboard.widget.provider_error", map[string]any{
 				"definition_id": inst.DefinitionID,
@@ -506,7 +542,7 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 		if enriched[i].Metadata == nil {
 			enriched[i].Metadata = map[string]any{}
 		}
-		enriched[i].Metadata["data"] = data
+		enriched[i].Metadata[widgetViewModelMetadataKey] = view
 	}
 	return enriched
 }

@@ -103,6 +103,40 @@ func TestAlertProviderShapesSeries(t *testing.T) {
 	}
 }
 
+func TestBuiltInAnalyticsProviderUsesTypedRuntimeState(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{
+					ID:           "funnel-1",
+					DefinitionID: "admin.widget.analytics_funnel",
+					AreaCode:     "admin.dashboard.main",
+					Configuration: map[string]any{
+						"range": "14d",
+					},
+				},
+			},
+		},
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		Providers:       NewRegistry(),
+		PreferenceStore: NewInMemoryPreferenceStore(),
+	})
+
+	layout, err := service.ConfigureLayout(context.Background(), ViewerContext{UserID: "user-1", Locale: "en"})
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	widget := layout.Areas["admin.dashboard.main"][0]
+	if _, ok := widget.Metadata[widgetViewModelMetadataKey].(WidgetViewModel); !ok {
+		t.Fatalf("expected built-in analytics provider to attach a WidgetViewModel, got %+v", widget.Metadata)
+	}
+	if _, ok := widget.Metadata["data"]; ok {
+		t.Fatalf("expected built-in analytics provider to avoid eager serialized data, got %+v", widget.Metadata)
+	}
+}
+
 type stubFunnelRepo struct {
 	query FunnelQuery
 	calls int

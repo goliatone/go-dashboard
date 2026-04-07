@@ -245,6 +245,43 @@ func TestConfigureLayoutAttachesThemeSelection(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutActivityFeedOverridePreservesTypedWidgetRuntime(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{
+					ID:           "activity-1",
+					DefinitionID: "admin.widget.recent_activity",
+					AreaCode:     "admin.dashboard.main",
+				},
+			},
+		},
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		Providers:       NewRegistry(),
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		ActivityFeed: StaticActivityFeed{
+			Items: []ActivityItem{
+				{User: "Ava", Action: "updated billing", Ago: 5 * time.Minute},
+			},
+		},
+	})
+
+	layout, err := service.ConfigureLayout(context.Background(), ViewerContext{UserID: "user-activity"})
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	widget := layout.Areas["admin.dashboard.main"][0]
+	view, ok := widget.Metadata[widgetViewModelMetadataKey].(WidgetViewModel)
+	if !ok {
+		t.Fatalf("expected ActivityFeed override to store WidgetViewModel metadata")
+	}
+	if _, ok := view.(WidgetData); ok {
+		t.Fatalf("expected ActivityFeed override to preserve typed widget runtime instead of eager WidgetData")
+	}
+}
+
 func TestAddWidgetEmitsRefreshHook(t *testing.T) {
 	store := &fakeWidgetStore{
 		createInstanceFn: func(input CreateWidgetInstanceInput) (WidgetInstance, error) {

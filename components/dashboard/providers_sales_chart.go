@@ -34,19 +34,62 @@ type SalesChartProvider struct {
 
 // NewSalesChartProvider builds a provider backed by the given repository.
 func NewSalesChartProvider(repo SalesSeriesRepository, renderer *EChartsProvider) Provider {
-	if renderer == nil {
-		renderer = NewEChartsProvider("line")
-	}
-	return &SalesChartProvider{
-		repo:     repo,
-		renderer: renderer,
+	return runtimeProviderAdapter{
+		runtime: newSalesChartRuntime(repo, renderer),
 	}
 }
 
-// Fetch renders the sales chart widget.
-func (p *SalesChartProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+func newSalesChartRuntime(repo SalesSeriesRepository, renderer *EChartsProvider) widgetSpecRuntime {
+	if renderer == nil {
+		renderer = NewEChartsProvider("line")
+	}
+	return salesChartRuntime{
+		code: "admin.widget.sales_chart",
+		provider: &SalesChartProvider{
+			repo:     repo,
+			renderer: renderer,
+		},
+	}
+}
+
+type salesChartRuntime struct {
+	code     string
+	provider *SalesChartProvider
+}
+
+func (runtime salesChartRuntime) Code() string {
+	return runtime.code
+}
+
+func (runtime salesChartRuntime) Definition() WidgetDefinition {
+	return WidgetDefinition{Code: runtime.code}
+}
+
+func (runtime salesChartRuntime) Resolve(ctx context.Context, meta WidgetContext) (ResolvedWidget, error) {
+	view, err := runtime.provider.BuildView(ctx, meta)
+	if err != nil {
+		return ResolvedWidget{}, err
+	}
+	return ResolvedWidget{
+		View: JSONViewModel[salesChartView]{Value: view},
+	}, nil
+}
+
+type salesChartView struct {
+	ChartHTML       string         `json:"chart_html"`
+	ChartType       string         `json:"chart_type"`
+	Title           string         `json:"title"`
+	Subtitle        string         `json:"subtitle"`
+	Theme           string         `json:"theme"`
+	Dynamic         bool           `json:"dynamic,omitempty"`
+	RefreshEndpoint string         `json:"refresh_endpoint,omitempty"`
+	Source          map[string]any `json:"source"`
+}
+
+// BuildView renders the sales chart widget into a typed view model.
+func (p *SalesChartProvider) BuildView(ctx context.Context, meta WidgetContext) (salesChartView, error) {
 	if p.repo == nil {
-		return nil, fmt.Errorf("sales chart provider: repository is required")
+		return salesChartView{}, fmt.Errorf("sales chart provider: repository is required")
 	}
 
 	cfg := meta.Instance.Configuration
@@ -66,7 +109,7 @@ func (p *SalesChartProvider) Fetch(ctx context.Context, meta WidgetContext) (Wid
 		Viewer:  meta.Viewer,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sales chart provider: %w", err)
+		return salesChartView{}, fmt.Errorf("sales chart provider: %w", err)
 	}
 
 	seriesData := []map[string]any{{
@@ -83,7 +126,7 @@ func (p *SalesChartProvider) Fetch(ctx context.Context, meta WidgetContext) (Wid
 			Viewer:  meta.Viewer,
 		})
 		if altErr != nil {
-			return nil, fmt.Errorf("sales chart comparison: %w", altErr)
+			return salesChartView{}, fmt.Errorf("sales chart comparison: %w", altErr)
 		}
 		seriesData = append(seriesData, map[string]any{
 			"name": titleize(comparison),
@@ -107,17 +150,34 @@ func (p *SalesChartProvider) Fetch(ctx context.Context, meta WidgetContext) (Wid
 		"footer_note":      cfg["footer_note"],
 	}
 
-	data, err := p.renderer.Fetch(ctx, temp)
+	chartView, err := p.renderer.BuildView(ctx, temp)
+	if err != nil {
+		return salesChartView{}, err
+	}
+
+	return salesChartView{
+		ChartHTML:       chartView.ChartHTML,
+		ChartType:       chartView.ChartType,
+		Title:           chartView.Title,
+		Subtitle:        chartView.Subtitle,
+		Theme:           chartView.Theme,
+		Dynamic:         chartView.Dynamic,
+		RefreshEndpoint: chartView.RefreshEndpoint,
+		Source: map[string]any{
+			"metric":  metric,
+			"period":  period,
+			"segment": segment,
+		},
+	}, nil
+}
+
+// Fetch renders the sales chart widget.
+func (p *SalesChartProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+	view, err := p.BuildView(ctx, meta)
 	if err != nil {
 		return nil, err
 	}
-
-	data["source"] = map[string]any{
-		"metric":  metric,
-		"period":  period,
-		"segment": segment,
-	}
-	return data, nil
+	return serializedWidgetData(view)
 }
 
 func seriesValues(points []SalesSeriesPoint) []float64 {

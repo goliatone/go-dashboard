@@ -244,8 +244,12 @@ func TestServiceIntegratesEChartsProvider(t *testing.T) {
 		}
 	}
 	require.NotNil(t, chart.Metadata)
-	data, ok := chart.Metadata["data"].(WidgetData)
-	require.True(t, ok, "chart metadata should include widget data")
+	view, ok := chart.Metadata[widgetViewModelMetadataKey].(WidgetViewModel)
+	require.True(t, ok, "chart metadata should include widget view model")
+	payload, err := view.Serialize()
+	require.NoError(t, err)
+	data, err := serializedWidgetData(payload)
+	require.NoError(t, err)
 
 	markup := html(data)
 	assert.Contains(t, markup, `nonce="service-nonce"`)

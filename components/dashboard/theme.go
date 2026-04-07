@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"strings"
 )
@@ -123,6 +124,12 @@ func (theme *ThemeSelection) TemplatePath(key string) string {
 	return theme.Templates[key]
 }
 
+// MarshalJSON preserves the canonical dashboard theme transport shape while
+// reusing ThemeSelection directly on the typed page contract.
+func (theme *ThemeSelection) MarshalJSON() ([]byte, error) {
+	return json.Marshal(themePayload(theme))
+}
+
 func normalizeCSSVariable(name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -152,4 +159,39 @@ func cloneThemeSelection(selection *ThemeSelection) *ThemeSelection {
 		maps.Copy(cloned.Assets.Values, selection.Assets.Values)
 	}
 	return &cloned
+}
+
+func themePayload(selection *ThemeSelection) map[string]any {
+	if selection == nil {
+		return nil
+	}
+	payload := map[string]any{}
+	if selection.Name != "" {
+		payload["name"] = selection.Name
+	}
+	if selection.Variant != "" {
+		payload["variant"] = selection.Variant
+	}
+	if len(selection.Tokens) > 0 {
+		payload["tokens"] = selection.Tokens
+	}
+	if cssVars := selection.CSSVariables(); len(cssVars) > 0 {
+		payload["css_vars"] = cssVars
+	}
+	if inline := selection.CSSVariablesInline(); inline != "" {
+		payload["css_vars_inline"] = inline
+	}
+	if selection.Assets.Prefix != "" {
+		payload["asset_prefix"] = selection.Assets.Prefix
+	}
+	if assets := selection.Assets.Resolved(); len(assets) > 0 {
+		payload["assets"] = assets
+	}
+	if len(selection.Templates) > 0 {
+		payload["templates"] = selection.Templates
+	}
+	if selection.ChartTheme != "" {
+		payload["chart_theme"] = selection.ChartTheme
+	}
+	return payload
 }

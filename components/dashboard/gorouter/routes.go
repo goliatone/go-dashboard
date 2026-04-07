@@ -79,11 +79,11 @@ func Register[T any](cfg Config[T]) error {
 
 	group.Get(routes.Layout, router.WrapHandler(func(ctx router.Context) error {
 		viewer := viewerResolver(ctx)
-		payload, err := httpapi.Layout(ctx.Context(), cfg.Controller, viewer)
+		page, err := httpapi.Page(ctx.Context(), cfg.Controller, viewer)
 		if err != nil {
 			return respondError(ctx, http.StatusInternalServerError, err)
 		}
-		return ctx.JSON(http.StatusOK, payload)
+		return ctx.JSON(http.StatusOK, page)
 	}))
 
 	if cfg.API != nil {
@@ -147,7 +147,7 @@ func registerAPI[T any](r router.Router[T], api dashboard.Executor, resolver Vie
 	}))
 
 	r.Post(routes.Preferences, router.WrapHandler(func(ctx router.Context) error {
-		payload, err := httpapi.PreferencesInputFromJSON(ctx.Body(), resolver(ctx))
+		payload, err := httpapi.PreferencesInputFromJSONCompatible(ctx.Body(), resolver(ctx))
 		if err != nil {
 			return respondError(ctx, http.StatusBadRequest, err)
 		}

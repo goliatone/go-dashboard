@@ -35,6 +35,28 @@ func TestSalesChartProviderBuildsSeries(t *testing.T) {
 	assert.Contains(t, html, "orders")
 }
 
+func TestSalesChartProviderPreservesThemeAndNonce(t *testing.T) {
+	provider := NewSalesChartProvider(stubSalesRepo{}, NewEChartsProvider("line", WithChartCache(nil)))
+	ctx := WidgetContext{
+		Instance: WidgetInstance{
+			ID:           "sales-1",
+			DefinitionID: "admin.widget.sales_chart",
+			Configuration: map[string]any{
+				"period": "30d",
+				"metric": "revenue",
+			},
+		},
+		Viewer:  ViewerContext{UserID: "tester"},
+		Theme:   &ThemeSelection{Variant: "dark"},
+		Options: map[string]any{scriptNonceOptionKey: "sales-nonce"},
+	}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wonderland", data["theme"])
+	assert.Contains(t, html(data), `nonce="sales-nonce"`)
+}
+
 type stubSalesRepo struct{}
 
 func (stubSalesRepo) FetchSalesSeries(_ context.Context, query SalesSeriesQuery) ([]SalesSeriesPoint, error) {

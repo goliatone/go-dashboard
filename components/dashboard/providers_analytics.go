@@ -85,53 +85,49 @@ type AlertSeries struct {
 	Counts map[string]int
 }
 
-type funnelProvider struct {
-	repo FunnelReportRepository
-}
-
 // NewFunnelAnalyticsProvider wires a FunnelReportRepository into a Provider.
 func NewFunnelAnalyticsProvider(repo FunnelReportRepository) Provider {
 	if repo == nil {
 		repo = DemoFunnelRepository{}
 	}
-	return &funnelProvider{repo: repo}
-}
-
-func (p *funnelProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
-	cfg := extractFunnelQuery(meta.Instance.Configuration)
-	report, err := p.repo.FetchFunnelReport(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	baseline := 1.0
-	if len(report.Steps) > 0 && report.Steps[0].Value > 0 {
-		baseline = report.Steps[0].Value
-	}
-	steps := make([]map[string]any, 0, len(report.Steps))
-	for _, step := range report.Steps {
-		percentage := 0.0
-		if baseline > 0 {
-			percentage = (step.Value / baseline) * 100
-		}
-		steps = append(steps, map[string]any{
-			"label":    step.Label,
-			"value":    step.Value,
-			"dropoff":  step.DropOff,
-			"position": step.Position,
-			"percent":  percentage,
-		})
-	}
-	return WidgetData{
-		"range":           report.Range,
-		"segment":         report.Segment,
-		"conversion_rate": report.ConversionRate,
-		"steps":           steps,
-		"goal":            report.Goal,
-	}, nil
-}
-
-type cohortProvider struct {
-	repo CohortReportRepository
+	return NewWidgetProvider(WidgetSpec[FunnelQuery, FunnelReport, JSONViewModel[funnelView]]{
+		Definition: WidgetDefinition{Code: "admin.widget.analytics_funnel"},
+		DecodeConfig: func(raw map[string]any) (FunnelQuery, error) {
+			return extractFunnelQuery(raw), nil
+		},
+		Fetch: func(ctx context.Context, req WidgetRequest[FunnelQuery]) (FunnelReport, error) {
+			return repo.FetchFunnelReport(ctx, req.Config)
+		},
+		BuildView: func(_ context.Context, report FunnelReport, _ WidgetViewContext[FunnelQuery]) (JSONViewModel[funnelView], error) {
+			baseline := 1.0
+			if len(report.Steps) > 0 && report.Steps[0].Value > 0 {
+				baseline = report.Steps[0].Value
+			}
+			steps := make([]funnelStepView, 0, len(report.Steps))
+			for _, step := range report.Steps {
+				percentage := 0.0
+				if baseline > 0 {
+					percentage = (step.Value / baseline) * 100
+				}
+				steps = append(steps, funnelStepView{
+					Label:    step.Label,
+					Value:    step.Value,
+					DropOff:  step.DropOff,
+					Position: step.Position,
+					Percent:  percentage,
+				})
+			}
+			return JSONViewModel[funnelView]{
+				Value: funnelView{
+					Range:          report.Range,
+					Segment:        report.Segment,
+					ConversionRate: report.ConversionRate,
+					Steps:          steps,
+					Goal:           report.Goal,
+				},
+			}, nil
+		},
+	})
 }
 
 // NewCohortAnalyticsProvider wires cohort repositories for retention widgets.
@@ -139,32 +135,32 @@ func NewCohortAnalyticsProvider(repo CohortReportRepository) Provider {
 	if repo == nil {
 		repo = DemoCohortRepository{}
 	}
-	return &cohortProvider{repo: repo}
-}
-
-func (p *cohortProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
-	query := extractCohortQuery(meta.Instance.Configuration)
-	report, err := p.repo.FetchCohortReport(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	rows := make([]map[string]any, 0, len(report.Rows))
-	for _, row := range report.Rows {
-		rows = append(rows, map[string]any{
-			"label":     row.Label,
-			"size":      row.Size,
-			"retention": row.Retention,
-		})
-	}
-	return WidgetData{
-		"interval": report.Interval,
-		"metric":   report.Metric,
-		"rows":     rows,
-	}, nil
-}
-
-type alertProvider struct {
-	repo AlertTrendsRepository
+	return NewWidgetProvider(WidgetSpec[CohortQuery, CohortReport, JSONViewModel[cohortView]]{
+		Definition: WidgetDefinition{Code: "admin.widget.cohort_overview"},
+		DecodeConfig: func(raw map[string]any) (CohortQuery, error) {
+			return extractCohortQuery(raw), nil
+		},
+		Fetch: func(ctx context.Context, req WidgetRequest[CohortQuery]) (CohortReport, error) {
+			return repo.FetchCohortReport(ctx, req.Config)
+		},
+		BuildView: func(_ context.Context, report CohortReport, _ WidgetViewContext[CohortQuery]) (JSONViewModel[cohortView], error) {
+			rows := make([]cohortRowView, 0, len(report.Rows))
+			for _, row := range report.Rows {
+				rows = append(rows, cohortRowView{
+					Label:     row.Label,
+					Size:      row.Size,
+					Retention: row.Retention,
+				})
+			}
+			return JSONViewModel[cohortView]{
+				Value: cohortView{
+					Interval: report.Interval,
+					Metric:   report.Metric,
+					Rows:     rows,
+				},
+			}, nil
+		},
+	})
 }
 
 // NewAlertTrendsProvider wires alert repositories into a Provider instance.
@@ -172,29 +168,73 @@ func NewAlertTrendsProvider(repo AlertTrendsRepository) Provider {
 	if repo == nil {
 		repo = DemoAlertRepository{}
 	}
-	return &alertProvider{repo: repo}
+	return NewWidgetProvider(WidgetSpec[AlertTrendQuery, AlertTrendsReport, JSONViewModel[alertTrendsView]]{
+		Definition: WidgetDefinition{Code: "admin.widget.alert_trends"},
+		DecodeConfig: func(raw map[string]any) (AlertTrendQuery, error) {
+			return extractAlertQuery(raw), nil
+		},
+		Fetch: func(ctx context.Context, req WidgetRequest[AlertTrendQuery]) (AlertTrendsReport, error) {
+			return repo.FetchAlertTrends(ctx, req.Config)
+		},
+		BuildView: func(_ context.Context, report AlertTrendsReport, meta WidgetViewContext[AlertTrendQuery]) (JSONViewModel[alertTrendsView], error) {
+			order := normalizeSeverities(meta.Request.Config.Severities)
+			series := make([]alertSeriesView, 0, len(report.Series))
+			for _, bucket := range report.Series {
+				series = append(series, alertSeriesView{
+					Day:    bucket.Day.Format("2006-01-02"),
+					Counts: countsForOrder(order, bucket.Counts),
+				})
+			}
+			return JSONViewModel[alertTrendsView]{
+				Value: alertTrendsView{
+					LookbackDays: meta.Request.Config.LookbackDays,
+					Severities:   countsForOrder(order, report.Totals),
+					Service:      report.Service,
+					Series:       series,
+				},
+			}, nil
+		},
+	})
 }
 
-func (p *alertProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
-	query := extractAlertQuery(meta.Instance.Configuration)
-	report, err := p.repo.FetchAlertTrends(ctx, query)
-	if err != nil {
-		return nil, err
-	}
-	order := normalizeSeverities(query.Severities)
-	series := make([]map[string]any, 0, len(report.Series))
-	for _, bucket := range report.Series {
-		series = append(series, map[string]any{
-			"day":    bucket.Day.Format("2006-01-02"),
-			"counts": countsForOrder(order, bucket.Counts),
-		})
-	}
-	return WidgetData{
-		"lookback_days": query.LookbackDays,
-		"severities":    countsForOrder(order, report.Totals),
-		"service":       report.Service,
-		"series":        series,
-	}, nil
+type funnelStepView struct {
+	Label    string  `json:"label"`
+	Value    float64 `json:"value"`
+	DropOff  float64 `json:"dropoff"`
+	Position int     `json:"position"`
+	Percent  float64 `json:"percent"`
+}
+
+type funnelView struct {
+	Range          string           `json:"range"`
+	Segment        string           `json:"segment"`
+	ConversionRate float64          `json:"conversion_rate"`
+	Steps          []funnelStepView `json:"steps"`
+	Goal           float64          `json:"goal"`
+}
+
+type cohortRowView struct {
+	Label     string    `json:"label"`
+	Size      int       `json:"size"`
+	Retention []float64 `json:"retention"`
+}
+
+type cohortView struct {
+	Interval string          `json:"interval"`
+	Metric   string          `json:"metric"`
+	Rows     []cohortRowView `json:"rows"`
+}
+
+type alertSeriesView struct {
+	Day    string           `json:"day"`
+	Counts []map[string]any `json:"counts"`
+}
+
+type alertTrendsView struct {
+	LookbackDays int               `json:"lookback_days"`
+	Severities   []map[string]any  `json:"severities"`
+	Service      string            `json:"service"`
+	Series       []alertSeriesView `json:"series"`
 }
 
 func extractFunnelQuery(config map[string]any) FunnelQuery {

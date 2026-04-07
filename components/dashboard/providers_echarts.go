@@ -31,6 +31,16 @@ type chartRenderContext struct {
 	Theme  string
 }
 
+type echartsWidgetView struct {
+	ChartHTML       string `json:"chart_html"`
+	ChartType       string `json:"chart_type"`
+	Title           string `json:"title"`
+	Subtitle        string `json:"subtitle"`
+	Theme           string `json:"theme"`
+	Dynamic         bool   `json:"dynamic,omitempty"`
+	RefreshEndpoint string `json:"refresh_endpoint,omitempty"`
+}
+
 // ThemeResolver selects a chart theme per viewer.
 type ThemeResolver func(ViewerContext) string
 
@@ -101,6 +111,15 @@ func WithChartTitleVisibility(enabled bool) EChartsProviderOption {
 
 // Fetch converts widget configuration into go-echarts markup.
 func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) {
+	view, err := p.BuildView(ctx, meta)
+	if err != nil {
+		return nil, err
+	}
+	return serializedWidgetData(view)
+}
+
+// BuildView converts widget configuration into a typed chart view model.
+func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (echartsWidgetView, error) {
 	cfg := meta.Instance.Configuration
 	if cfg == nil {
 		cfg = map[string]any{}
@@ -124,7 +143,7 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 
 	series := parseChartSeries(cfg["series"])
 	if len(series) == 0 {
-		return nil, fmt.Errorf("chart series is required")
+		return echartsWidgetView{}, fmt.Errorf("chart series is required")
 	}
 
 	xAxis := stringSliceValue(cfg["x_axis"])
@@ -172,28 +191,58 @@ func (p *EChartsProvider) Fetch(ctx context.Context, meta WidgetContext) (Widget
 		markup, err = renderFn()
 	}
 	if err != nil {
-		return nil, err
+		return echartsWidgetView{}, err
 	}
 
 	markup = addResponsiveBehavior(markup)
 	html := applySecurityDecorators(markup, nonceFrom(meta.Options))
 
-	data := WidgetData{
-		"chart_html": html,
-		"chart_type": p.chartType,
-		"title":      displayTitle,
-		"subtitle":   displaySubtitle,
-		"theme":      renderCtx.Theme,
+	view := echartsWidgetView{
+		ChartHTML: html,
+		ChartType: p.chartType,
+		Title:     displayTitle,
+		Subtitle:  displaySubtitle,
+		Theme:     renderCtx.Theme,
 	}
 
 	if dynamic := boolValue(cfg["dynamic"]); dynamic {
-		data["dynamic"] = true
+		view.Dynamic = true
 		if refresh := stringValue(cfg["refresh_endpoint"], ""); refresh != "" {
-			data["refresh_endpoint"] = refresh
+			view.RefreshEndpoint = refresh
 		}
 	}
 
-	return data, nil
+	return view, nil
+}
+
+type echartsRuntime struct {
+	code     string
+	provider *EChartsProvider
+}
+
+func (runtime echartsRuntime) Code() string {
+	return runtime.code
+}
+
+func (runtime echartsRuntime) Definition() WidgetDefinition {
+	return WidgetDefinition{Code: runtime.code}
+}
+
+func (runtime echartsRuntime) Resolve(ctx context.Context, meta WidgetContext) (ResolvedWidget, error) {
+	view, err := runtime.provider.BuildView(ctx, meta)
+	if err != nil {
+		return ResolvedWidget{}, err
+	}
+	return ResolvedWidget{
+		View: JSONViewModel[echartsWidgetView]{Value: view},
+	}, nil
+}
+
+func newEChartsRuntime(code, chartType string) widgetSpecRuntime {
+	return echartsRuntime{
+		code:     code,
+		provider: NewEChartsProvider(chartType),
+	}
 }
 
 func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (string, error) {
@@ -760,13 +809,13 @@ func init() {
 			"admin.widget.gauge_chart":   "gauge",
 		}
 		for code, chartType := range providers {
-			if _, ok := reg.Provider(code); ok {
+			if _, ok := reg.widgetRuntime(code); ok {
 				continue
 			}
 			if _, ok := reg.Definition(code); !ok {
 				continue
 			}
-			if err := reg.RegisterProvider(code, NewEChartsProvider(chartType)); err != nil {
+			if err := reg.registerRuntime(code, newEChartsRuntime(code, chartType)); err != nil {
 				return err
 			}
 		}
