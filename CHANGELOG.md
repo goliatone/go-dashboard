@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.10.0](https://github.com/goliatone/go-dashboard/compare/v0.9.0...v0.10.0) - (2026-04-07)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.10.0 ([f73f0c7](https://github.com/goliatone/go-dashboard/commit/f73f0c78a8ed0a067883e06a241158e10cdd5e4b))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Built in provider, theme, asset alignment, struct and interface refactoring ([72789aa](https://github.com/goliatone/go-dashboard/commit/72789aadd27376bf279f0bccce55dfb1fd0be0f1))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.9.0 ([892a83e](https://github.com/goliatone/go-dashboard/commit/892a83e5eed0f92e4a4ddd27e2501a38627ffad9))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update examples ([eb3fa48](https://github.com/goliatone/go-dashboard/commit/eb3fa48ee598dd2b08c8fa88e0cc0c28975f1cab))  - (goliatone)
+
 # [0.9.0](https://github.com/goliatone/go-dashboard/compare/v0.8.0...v0.9.0) - (2026-04-01)
 
 ## <!-- 13 -->📦 Bumps
