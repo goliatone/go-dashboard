@@ -1,18 +1,16 @@
 module github.com/goliatone/go-dashboard
 
-go 1.24.10
-
-toolchain go1.24.11
+go 1.26.0
 
 require (
 	github.com/alecthomas/kong v1.13.0
 	github.com/ettle/strcase v0.2.0
 	github.com/go-echarts/go-echarts/v2 v2.5.0
 	github.com/gofiber/fiber/v2 v2.52.10
-	github.com/goliatone/go-command v0.13.0
-	github.com/goliatone/go-router v0.45.1
+	github.com/goliatone/go-command v0.19.0
+	github.com/goliatone/go-router v0.57.0
 	github.com/goliatone/go-template v0.3.1
-	github.com/goliatone/go-users v0.16.0
+	github.com/goliatone/go-users v0.18.0
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
@@ -36,6 +34,7 @@ require (
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
 	github.com/goliatone/go-errors v0.10.0 // indirect
+	github.com/goliatone/go-i18n v0.3.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
@@ -51,7 +50,8 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.68.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
-	golang.org/x/sys v0.39.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
