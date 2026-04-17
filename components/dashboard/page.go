@@ -9,6 +9,7 @@ type Page struct {
 	Description string          `json:"description,omitempty"`
 	Locale      string          `json:"locale,omitempty"`
 	Areas       []PageArea      `json:"areas,omitempty"`
+	Assets      *PageAssets     `json:"assets,omitempty"`
 	Theme       *ThemeSelection `json:"theme,omitempty"`
 	State       *PageState      `json:"state,omitempty"`
 	Meta        *PageMeta       `json:"meta,omitempty"`
@@ -43,10 +44,78 @@ func (page Page) LegacyPayload() map[string]any {
 		"areas":         areas,
 		"ordered_areas": ordered,
 	}
+	if assets := pageAssetsPayload(page.Assets); assets != nil {
+		response["assets"] = assets
+	}
 	if theme != nil {
 		response["theme"] = theme
 	}
 	return response
+}
+
+// PageAssets captures external asset dependencies required by the assembled page.
+type PageAssets struct {
+	JS  []string `json:"js,omitempty"`
+	CSS []string `json:"css,omitempty"`
+}
+
+// Empty reports whether the page has any external assets to load.
+func (assets *PageAssets) Empty() bool {
+	return assets == nil || (len(assets.JS) == 0 && len(assets.CSS) == 0)
+}
+
+// AddJS appends JS assets while preserving first-seen order and deduping.
+func (assets *PageAssets) AddJS(values ...string) {
+	if assets == nil {
+		return
+	}
+	assets.JS = appendUniqueStrings(assets.JS, values...)
+}
+
+// AddCSS appends CSS assets while preserving first-seen order and deduping.
+func (assets *PageAssets) AddCSS(values ...string) {
+	if assets == nil {
+		return
+	}
+	assets.CSS = appendUniqueStrings(assets.CSS, values...)
+}
+
+func pageAssetsPayload(assets *PageAssets) map[string]any {
+	if assets == nil || assets.Empty() {
+		return nil
+	}
+	payload := map[string]any{}
+	if len(assets.JS) > 0 {
+		payload["js"] = append([]string{}, assets.JS...)
+	}
+	if len(assets.CSS) > 0 {
+		payload["css"] = append([]string{}, assets.CSS...)
+	}
+	return payload
+}
+
+func appendUniqueStrings(existing []string, values ...string) []string {
+	if len(values) == 0 {
+		return existing
+	}
+	seen := make(map[string]struct{}, len(existing)+len(values))
+	for _, value := range existing {
+		if value == "" {
+			continue
+		}
+		seen[value] = struct{}{}
+	}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		existing = append(existing, value)
+	}
+	return existing
 }
 
 // PageArea models a typed dashboard area/slot on the page.
