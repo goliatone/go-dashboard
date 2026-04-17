@@ -80,11 +80,14 @@ func (c *Controller) pageFromLayout(layout Layout, viewer ViewerContext) (Page, 
 		Theme:       layout.Theme,
 		Areas:       make([]PageArea, 0, len(c.areas)),
 	}
+	assets := PageAssets{}
 	for idx, section := range c.areas {
-		widgets, err := c.widgetFrames(section.Code, layout.Areas[section.Code])
+		widgets, widgetAssets, err := c.widgetFrames(section.Code, layout.Areas[section.Code])
 		if err != nil {
 			return Page{}, err
 		}
+		assets.AddJS(widgetAssets.JS...)
+		assets.AddCSS(widgetAssets.CSS...)
 		page.Areas = append(page.Areas, PageArea{
 			Slot:    section.Slot,
 			Code:    section.Code,
@@ -92,19 +95,29 @@ func (c *Controller) pageFromLayout(layout Layout, viewer ViewerContext) (Page, 
 			Widgets: widgets,
 		})
 	}
+	if !assets.Empty() {
+		page.Assets = &assets
+	}
 	return page, nil
 }
 
-func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]WidgetFrame, error) {
+func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]WidgetFrame, PageAssets, error) {
 	if len(instances) == 0 {
-		return nil, nil
+		return nil, PageAssets{}, nil
 	}
 	widgets := make([]WidgetFrame, 0, len(instances))
+	assets := PageAssets{}
 	for idx, inst := range instances {
 		data, dataPresent, err := resolveWidgetFrameData(inst.Metadata)
 		if err != nil {
-			return nil, err
+			return nil, PageAssets{}, err
 		}
+		data, widgetAssets, err := extractWidgetPageAssets(data)
+		if err != nil {
+			return nil, PageAssets{}, err
+		}
+		assets.AddJS(widgetAssets.JS...)
+		assets.AddCSS(widgetAssets.CSS...)
 		areaCode := inst.AreaCode
 		if areaCode == "" {
 			areaCode = code
@@ -127,7 +140,7 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 			},
 		})
 	}
-	return widgets, nil
+	return widgets, assets, nil
 }
 
 func (c *Controller) templatePath() string {
@@ -368,4 +381,48 @@ func resolveWidgetFrameData(metadata map[string]any) (any, bool, error) {
 		return normalizeWidgetFrameData(rawData), true, nil
 	}
 	return nil, false, nil
+}
+
+func extractWidgetPageAssets(data any) (any, PageAssets, error) {
+	if data == nil {
+		return nil, PageAssets{}, nil
+	}
+	normalized, err := normalizeStructuredValue(data)
+	if err != nil {
+		return data, PageAssets{}, err
+	}
+	payload, ok := normalized.(map[string]any)
+	if !ok {
+		return data, PageAssets{}, nil
+	}
+	assets := PageAssets{
+		JS:  stringSliceFromValue(payload["js_assets"]),
+		CSS: stringSliceFromValue(payload["css_assets"]),
+	}
+	if assets.Empty() {
+		return data, PageAssets{}, nil
+	}
+	cleaned := cloneAnyMap(payload)
+	delete(cleaned, "js_assets")
+	delete(cleaned, "css_assets")
+	return cleaned, assets, nil
+}
+
+func stringSliceFromValue(value any) []string {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case []string:
+		return append([]string{}, typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if s, ok := item.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
