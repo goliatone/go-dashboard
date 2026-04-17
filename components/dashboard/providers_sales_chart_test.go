@@ -33,6 +33,30 @@ func TestSalesChartProviderBuildsSeries(t *testing.T) {
 	html := html(data)
 	assert.Contains(t, html, "revenue")
 	assert.Contains(t, html, "orders")
+	assert.NotContains(t, html, "<!doctype html>")
+	assert.NotEmpty(t, data["js_assets"])
+}
+
+func TestSalesChartProviderPreservesThemeAndNonce(t *testing.T) {
+	provider := NewSalesChartProvider(stubSalesRepo{}, NewEChartsProvider("line", WithChartCache(nil)))
+	ctx := WidgetContext{
+		Instance: WidgetInstance{
+			ID:           "sales-1",
+			DefinitionID: "admin.widget.sales_chart",
+			Configuration: map[string]any{
+				"period": "30d",
+				"metric": "revenue",
+			},
+		},
+		Viewer:  ViewerContext{UserID: "tester"},
+		Theme:   &ThemeSelection{Variant: "dark"},
+		Options: map[string]any{scriptNonceOptionKey: "sales-nonce"},
+	}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "wonderland", data["theme"])
+	assert.Contains(t, html(data), `nonce="sales-nonce"`)
 }
 
 type stubSalesRepo struct{}

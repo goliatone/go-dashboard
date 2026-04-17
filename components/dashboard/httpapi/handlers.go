@@ -12,6 +12,7 @@ import (
 // Controller exposes the shared controller operations used by transport helpers.
 type Controller interface {
 	RenderTemplate(ctx context.Context, viewer dashboard.ViewerContext, out *bytes.Buffer) error
+	Page(ctx context.Context, viewer dashboard.ViewerContext) (dashboard.Page, error)
 	LayoutPayload(ctx context.Context, viewer dashboard.ViewerContext) (map[string]any, error)
 }
 
@@ -33,7 +34,17 @@ func RenderHTML(ctx context.Context, controller *dashboard.Controller, viewer da
 	return buf.Bytes(), nil
 }
 
-// Layout resolves the canonical layout payload through the shared controller.
+// Page resolves the canonical typed dashboard page through the shared
+// controller. JSON transports should prefer this over legacy payload adapters.
+func Page(ctx context.Context, controller *dashboard.Controller, viewer dashboard.ViewerContext) (dashboard.Page, error) {
+	if controller == nil {
+		return dashboard.Page{}, errors.New("dashboard: controller not configured")
+	}
+	return controller.Page(ctx, viewer)
+}
+
+// Layout resolves the legacy layout payload adapter through the shared
+// controller. It remains available only for migration compatibility.
 func Layout(ctx context.Context, controller *dashboard.Controller, viewer dashboard.ViewerContext) (map[string]any, error) {
 	if controller == nil {
 		return nil, errors.New("dashboard: controller not configured")
@@ -120,4 +131,78 @@ func PreferencesInputFromMap(body map[string]any, viewer dashboard.ViewerContext
 		return dashboard.SaveLayoutPreferencesInput{}, err
 	}
 	return PreferencesInputFromJSON(raw, viewer)
+}
+
+// PreferencesInputFromJSONCompatible decodes canonical preference payloads and,
+// when explicitly present, the temporary legacy `{"layout":[...]}` payload
+// adapter.
+func PreferencesInputFromJSONCompatible(body []byte, viewer dashboard.ViewerContext) (dashboard.SaveLayoutPreferencesInput, error) {
+	if len(body) == 0 {
+		return dashboard.SaveLayoutPreferencesInput{Viewer: viewer}, nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return dashboard.SaveLayoutPreferencesInput{}, err
+	}
+	return PreferencesInputFromMapCompatible(raw, viewer)
+}
+
+// PreferencesInputFromMapCompatible converts canonical preference payloads and,
+// when explicitly present, the temporary legacy layout-array payload adapter.
+func PreferencesInputFromMapCompatible(body map[string]any, viewer dashboard.ViewerContext) (dashboard.SaveLayoutPreferencesInput, error) {
+	if isLegacyLayoutPreferencesPayload(body) {
+		return LegacyPreferencesInputFromMap(body, viewer)
+	}
+	return PreferencesInputFromMap(body, viewer)
+}
+
+// LegacyPreferencesInputFromMap converts the deprecated layout-array payload
+// into the canonical typed preferences contract. Remove once downstream callers
+// stop sending `{"layout":[...]}` request bodies.
+func LegacyPreferencesInputFromMap(body map[string]any, viewer dashboard.ViewerContext) (dashboard.SaveLayoutPreferencesInput, error) {
+	if len(body) == 0 {
+		return dashboard.SaveLayoutPreferencesInput{Viewer: viewer}, nil
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return dashboard.SaveLayoutPreferencesInput{}, err
+	}
+	var input dashboard.LegacyLayoutPreferencesInput
+	if err := json.Unmarshal(raw, &input); err != nil {
+		return dashboard.SaveLayoutPreferencesInput{}, err
+	}
+	if _, ok := body["layout"]; ok && len(input.Layout) == 0 {
+		return dashboard.SaveLayoutPreferencesInput{}, errors.New("dashboard: legacy layout payload is empty")
+	}
+	return input.ToSaveLayoutPreferencesInput(viewer), nil
+}
+
+func isLegacyLayoutPreferencesPayload(body map[string]any) bool {
+	if len(body) == 0 {
+		return false
+	}
+	_, hasLayout := body["layout"]
+	if !hasLayout {
+		return false
+	}
+	return !hasCanonicalPreferencesPayload(body)
+}
+
+func hasCanonicalPreferencesPayload(body map[string]any) bool {
+	if len(body) == 0 {
+		return false
+	}
+	if _, ok := body["area_order"]; ok {
+		return true
+	}
+	if _, ok := body["layout_rows"]; ok {
+		return true
+	}
+	if _, ok := body["hidden_widget_ids"]; ok {
+		return true
+	}
+	if _, ok := body["viewer"]; ok {
+		return true
+	}
+	return false
 }

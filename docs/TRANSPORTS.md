@@ -20,6 +20,9 @@ the transport strategy that best fits their stack.
 - Localization is automatic: if your `ViewerResolver` omits `Locale`, the
   adapter falls back to query params, URL prefixes, or `Accept-Language` so
   `ViewerContext.Locale` is always populated for downstream providers/templates.
+- If your host has a locale fallback policy, populate
+  `ViewerContext.FallbackLocales` so widget stores can resolve localized area
+  payloads without widening to base/default content unexpectedly.
 - Customize URLs by setting `Config.BasePath` (changes the prefix) or providing
   a `RouteConfig` with per-endpoint paths (HTML, `_layout`, CRUD, preferences,
   WebSocket) while reusing the same controller/command wiring.

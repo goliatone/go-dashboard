@@ -19,6 +19,35 @@ This package hosts the core building blocks described in `DSH_TDD.md`:
 The directory now contains the production-ready implementation; refer to
 `docs/TRANSPORTS.md` for diagrams and integration notes.
 
+## Typed Page Boundary
+
+`dashboard.Page` is the canonical presentation contract for this package. It
+preserves ordered areas directly as `[]PageArea`, carries framework-owned widget
+frame metadata in typed fields, and reuses `*ThemeSelection` as the page theme
+contract.
+
+`dashboard.Renderer` now renders raw `dashboard.Page` values. The controller no
+longer treats payload maps as the primary HTML rendering surface.
+
+`Controller.LayoutPayload(...)` and other payload-map helpers remain available
+only as migration adapters for existing integrations. New rendering and
+transport work should derive from `dashboard.Page` rather than building or
+mutating `map[string]any` payloads. When an older renderer still requires the
+historical `Render(name, any, ...)` contract, wrap it explicitly with
+`dashboard.AdaptLegacyRenderer(...)`.
+
+## Discovery And Diagnostics
+
+Operational consumers should use the typed discovery and diagnostics contracts
+instead of reverse-engineering payload maps:
+
+- `Registry.Catalog()` returns an ordered `CatalogSnapshot` containing registered
+  areas, definitions, and provider discovery metadata.
+- `Service.Diagnostics(...)` returns typed resolved layout state, viewer
+  preferences, and theme information.
+- `Controller.Diagnostics(...)` composes those diagnostics with the canonical
+  typed `dashboard.Page`.
+
 ## Widget Registration Options
 
 1. **Plugin hooks** – call `dashboard.RegisterWidgetHook(func(reg *dashboard.Registry) error { ... })`
@@ -51,13 +80,15 @@ layout.
 
 - `dashboard.Service` accepts an optional go-theme-compatible `ThemeProvider`
   plus `ThemeSelectorFunc` on `dashboard.Options`. When provided, the resolved
-  `ThemeSelection` is attached to layout payloads, widget contexts, and template
-  data (`theme.tokens`, `theme.css_vars_inline`, `theme.assets`, `theme.templates`).
+  `ThemeSelection` is attached to the typed page contract, widget contexts, and
+  template data (`theme.tokens`, `theme.css_vars_inline`, `theme.assets`,
+  `theme.templates`).
 - ECharts providers automatically derive a default chart theme from the selected
   variant (dark -> wonderland, light -> westeros); per-widget `theme` config and
   `WithChartTheme/WithChartThemeResolver` still win.
-- The HTML payload exposes `theme` so custom renderers can wire CSS variables or
-  theme-specific partials; when no provider is configured, behavior is unchanged.
+- Typed page rendering exposes `theme` so custom renderers can wire CSS
+  variables or theme-specific partials; when no provider is configured,
+  behavior is unchanged.
 
 ```go
 themeProvider := loadThemeProviderSomehow() // e.g., go-theme registry adapter

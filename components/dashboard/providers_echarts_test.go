@@ -30,7 +30,12 @@ func TestEChartsBarProvider(t *testing.T) {
 
 	assert.Equal(t, "bar", data["chart_type"])
 	assert.Equal(t, "Test Chart", data["title"])
-	assert.Contains(t, html(data), "echarts")
+	assert.Contains(t, html(data), "echarts.init")
+	assert.NotContains(t, html(data), "<!doctype html>")
+	assert.Equal(t, []string{
+		DefaultEChartsAssetsPath + "echarts.min.js",
+		DefaultEChartsAssetsPath + "themes/westeros.js",
+	}, jsAssets(data))
 }
 
 func TestEChartsLineProvider(t *testing.T) {
@@ -48,7 +53,8 @@ func TestEChartsLineProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "line", data["chart_type"])
 	assert.Equal(t, "Line Test", data["title"])
-	assert.Contains(t, html(data), "echarts")
+	assert.Contains(t, html(data), "echarts.init")
+	assert.NotContains(t, html(data), "<html")
 }
 
 func TestEChartsPieProvider(t *testing.T) {
@@ -71,7 +77,8 @@ func TestEChartsPieProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "pie", data["chart_type"])
 	assert.Equal(t, "Pie Test", data["title"])
-	assert.Contains(t, html(data), "echarts")
+	assert.Contains(t, html(data), "echarts.init")
+	assert.NotContains(t, html(data), "<head>")
 }
 
 func TestEChartsProviderInvalidType(t *testing.T) {
@@ -244,13 +251,21 @@ func TestServiceIntegratesEChartsProvider(t *testing.T) {
 		}
 	}
 	require.NotNil(t, chart.Metadata)
-	data, ok := chart.Metadata["data"].(WidgetData)
-	require.True(t, ok, "chart metadata should include widget data")
+	view, ok := chart.Metadata[widgetViewModelMetadataKey].(WidgetViewModel)
+	require.True(t, ok, "chart metadata should include widget view model")
+	payload, err := view.Serialize()
+	require.NoError(t, err)
+	data, err := serializedWidgetData(payload)
+	require.NoError(t, err)
 
 	markup := html(data)
 	assert.Contains(t, markup, `nonce="service-nonce"`)
 	assert.Contains(t, data["title"], "Layout Chart")
 	assert.Contains(t, data["chart_type"], "bar")
+	assert.Equal(t, []string{
+		DefaultEChartsAssetsPath + "echarts.min.js",
+		DefaultEChartsAssetsPath + "themes/westeros.js",
+	}, jsAssets(data))
 }
 
 func sampleChartContext(definition string, cfg map[string]any) WidgetContext {
@@ -267,6 +282,21 @@ func sampleChartContext(definition string, cfg map[string]any) WidgetContext {
 func html(data WidgetData) string {
 	val, _ := data["chart_html"].(string)
 	return strings.ToLower(val)
+}
+
+func jsAssets(data WidgetData) []string {
+	raw, _ := data["js_assets"].([]string)
+	if raw != nil {
+		return raw
+	}
+	values, _ := data["js_assets"].([]any)
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if s, ok := value.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 type countingCache struct {

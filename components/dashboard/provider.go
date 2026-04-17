@@ -30,3 +30,12 @@ type WidgetContext struct {
 type WidgetData map[string]any
 
 const scriptNonceOptionKey = "dashboard.widget.script_nonce"
+
+// Serialize makes legacy WidgetData payloads explicit WidgetViewModel values so
+// the runtime can delay type erasure until page assembly.
+func (data WidgetData) Serialize() (any, error) {
+	if data == nil {
+		return nil, nil
+	}
+	return map[string]any(data), nil
+}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -176,47 +177,18 @@ func main() {
 	themeSelector := func(context.Context, dashboard.ViewerContext) dashboard.ThemeSelector {
 		return dashboard.ThemeSelector{Name: themeSelection.Name, Variant: themeSelection.Variant}
 	}
-	service, registry, store := setupDemoDashboard(ctx, translator, themeProvider, themeSelector)
-
-	renderer := newSampleRenderer()
-	controller := dashboard.NewController(dashboard.ControllerOptions{
-		Service:  service,
-		Renderer: renderer,
-	})
-
-	executor := &httpapi.CommandExecutor{
-		AssignCommander:  commands.NewAssignWidgetCommand(service, nil),
-		RemoveCommander:  commands.NewRemoveWidgetCommand(service, nil),
-		ReorderCommander: commands.NewReorderWidgetsCommand(service, nil),
-		RefreshCommander: commands.NewRefreshWidgetCommand(service, nil),
-		PrefsCommander:   commands.NewSaveLayoutPreferencesCommand(service, nil),
+	service, registry, store, err := setupDemoDashboard(ctx, translator, themeProvider, themeSelector)
+	if err != nil {
+		log.Fatalf("setup demo dashboard: %v", err)
 	}
 
-	hook := dashboard.NewBroadcastHook()
+	renderer := newSampleRenderer()
+	controller := newDemoController(service, translator, renderer)
+	executor := newDemoCommandExecutor(service)
 
-	server := router.NewFiberAdapter(func(app *fiber.App) *fiber.App {
-		app = router.DefaultFiberOptions(app)
-		if os.Getenv("GO_DASHBOARD_ENABLE_GZIP") != "" {
-			app.Use(compress.New())
-		}
-		return app
-	})
-	appRouter := server.Router()
-	if err := gorouter.Register(gorouter.Config[*fiber.App]{
-		Router:     appRouter,
-		Controller: controller,
-		API:        executor,
-		Broadcast:  hook,
-		ViewerResolver: func(ctx router.Context) dashboard.ViewerContext {
-			viewer := dashboard.ViewerContext{UserID: sampleViewerID, Roles: []string{"admin"}, Locale: "en"}
-			if locale := ctx.Query("locale"); locale != "" {
-				viewer.Locale = locale
-			} else if header := ctx.Header("Accept-Language"); header != "" {
-				viewer.Locale = strings.ToLower(strings.TrimSpace(strings.Split(header, ",")[0]))
-			}
-			return viewer
-		},
-	}); err != nil {
+	hook := dashboard.NewBroadcastHook()
+	server, err := newDemoServer(controller, executor, hook)
+	if err != nil {
 		log.Fatalf("register routes: %v", err)
 	}
 
@@ -248,6 +220,62 @@ func main() {
 	if err := server.Serve(":9876"); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
+}
+
+func newDemoController(service *dashboard.Service, translator dashboard.TranslationService, renderer dashboard.Renderer) *dashboard.Controller {
+	return dashboard.NewController(dashboard.ControllerOptions{
+		Service:       service,
+		Renderer:      renderer,
+		PageDecorator: demoPageDecorator(translator),
+	})
+}
+
+func demoPageDecorator(translator dashboard.TranslationService) dashboard.PageDecorator {
+	return func(ctx context.Context, viewer dashboard.ViewerContext, page dashboard.Page) (dashboard.Page, error) {
+		page.Title = translateOrDefault(ctx, translator, viewer.Locale, "dashboard.page.title", "Dashboard")
+		page.Description = translateOrDefault(ctx, translator, viewer.Locale, "dashboard.page.description", "Admin overview")
+		return page, nil
+	}
+}
+
+func newDemoCommandExecutor(service *dashboard.Service) *httpapi.CommandExecutor {
+	return &httpapi.CommandExecutor{
+		AssignCommander:  commands.NewAssignWidgetCommand(service, nil),
+		RemoveCommander:  commands.NewRemoveWidgetCommand(service, nil),
+		ReorderCommander: commands.NewReorderWidgetsCommand(service, nil),
+		RefreshCommander: commands.NewRefreshWidgetCommand(service, nil),
+		PrefsCommander:   commands.NewSaveLayoutPreferencesCommand(service, nil),
+	}
+}
+
+func newDemoServer(controller *dashboard.Controller, executor dashboard.Executor, hook *dashboard.BroadcastHook) (router.Server[*fiber.App], error) {
+	server := router.NewFiberAdapter(func(app *fiber.App) *fiber.App {
+		app = router.DefaultFiberOptions(app)
+		if os.Getenv("GO_DASHBOARD_ENABLE_GZIP") != "" {
+			app.Use(compress.New())
+		}
+		return app
+	})
+	if err := gorouter.Register(gorouter.Config[*fiber.App]{
+		Router:         server.Router(),
+		Controller:     controller,
+		API:            executor,
+		Broadcast:      hook,
+		ViewerResolver: demoViewerResolver,
+	}); err != nil {
+		return nil, err
+	}
+	return server, nil
+}
+
+func demoViewerResolver(ctx router.Context) dashboard.ViewerContext {
+	viewer := dashboard.ViewerContext{UserID: sampleViewerID, Roles: []string{"admin"}, Locale: "en"}
+	if locale := ctx.Query("locale"); locale != "" {
+		viewer.Locale = locale
+	} else if header := ctx.Header("Accept-Language"); header != "" {
+		viewer.Locale = strings.ToLower(strings.TrimSpace(strings.Split(header, ",")[0]))
+	}
+	return viewer
 }
 
 // --- In-memory demo dependencies below. ---
@@ -509,7 +537,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
-func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore) {
+func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore, error) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
 	feed := demoActivityFeed{
@@ -586,17 +614,17 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 
 	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
 	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: false}); err != nil {
-		log.Fatalf("seed dashboard: %v", err)
+		return nil, nil, nil, fmt.Errorf("seed dashboard: %w", err)
 	}
 
 	if err := registerAnalyticsProviders(registry); err != nil {
-		log.Fatalf("register analytics providers: %v", err)
+		return nil, nil, nil, fmt.Errorf("register analytics providers: %w", err)
 	}
 	if err := registerDemoContentProviders(registry); err != nil {
-		log.Fatalf("register demo providers: %v", err)
+		return nil, nil, nil, fmt.Errorf("register demo providers: %w", err)
 	}
 
-	addWidgetOrDie(ctx, service, "conversion funnel", dashboard.AddWidgetRequest{
+	if err := addWidget(ctx, service, "conversion funnel", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.analytics_funnel",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(0),
@@ -605,8 +633,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"segment": "enterprise",
 			"goal":    52,
 		},
-	})
-	addWidgetOrDie(ctx, service, "welcome banner", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "welcome banner", dashboard.AddWidgetRequest{
 		DefinitionID: customDefinition.Code,
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(1),
@@ -616,16 +646,20 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 				"es": "Las operaciones se ven estables. Usa este espacio para notas o recordatorios.",
 			},
 		},
-	})
-	addWidgetOrDie(ctx, service, "user stats", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "user stats", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.user_stats",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(2),
 		Configuration: map[string]any{
 			"metric": "active",
 		},
-	})
-	addWidgetOrDie(ctx, service, "cohort overview", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "cohort overview", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.cohort_overview",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(3),
@@ -634,8 +668,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"periods":  6,
 			"metric":   "retained",
 		},
-	})
-	addWidgetOrDie(ctx, service, "monthly sales chart", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "monthly sales chart", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.bar_chart",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(4),
@@ -649,8 +685,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 				{"name": "Asia Pacific", "data": []float64{150, 232, 201, 154, 190, 330}},
 			},
 		},
-	})
-	addWidgetOrDie(ctx, service, "user growth chart", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "user growth chart", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.line_chart",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(5),
@@ -663,21 +701,27 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			},
 			"footer_note": "Data refreshed nightly · demo dataset",
 		},
-	})
-	addWidgetOrDie(ctx, service, "activity feed", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "activity feed", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.recent_activity",
 		AreaCode:     "admin.dashboard.sidebar",
 		Position:     intPtr(0),
 		Configuration: map[string]any{
 			"limit": 5,
 		},
-	})
-	addWidgetOrDie(ctx, service, "system status", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "system status", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.system_status",
 		AreaCode:     "admin.dashboard.sidebar",
 		Position:     intPtr(1),
-	})
-	addWidgetOrDie(ctx, service, "traffic sources chart", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "traffic sources chart", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.pie_chart",
 		AreaCode:     "admin.dashboard.sidebar",
 		Position:     intPtr(2),
@@ -696,13 +740,17 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 				},
 			},
 		},
-	})
-	addWidgetOrDie(ctx, service, "quick actions", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "quick actions", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.quick_actions",
 		AreaCode:     "admin.dashboard.footer",
 		Position:     intPtr(0),
-	})
-	addWidgetOrDie(ctx, service, "alert trends", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "alert trends", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.alert_trends",
 		AreaCode:     "admin.dashboard.footer",
 		Position:     intPtr(1),
@@ -711,8 +759,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"severity":      []any{"critical", "warning"},
 			"service":       "Checkout API",
 		},
-	})
-	addWidgetOrDie(ctx, service, "scatter correlation", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "scatter correlation", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.scatter_chart",
 		AreaCode:     "admin.dashboard.main",
 		Position:     intPtr(6),
@@ -729,8 +779,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 				},
 			},
 		},
-	})
-	addWidgetOrDie(ctx, service, "uptime gauge", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "uptime gauge", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.gauge_chart",
 		AreaCode:     "admin.dashboard.sidebar",
 		Position:     intPtr(3),
@@ -741,8 +793,10 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			},
 			"theme": "wonderland",
 		},
-	})
-	addWidgetOrDie(ctx, service, "sales pulse", dashboard.AddWidgetRequest{
+	}); err != nil {
+		return nil, nil, nil, err
+	}
+	if err := addWidget(ctx, service, "sales pulse", dashboard.AddWidgetRequest{
 		DefinitionID: "admin.widget.sales_chart",
 		AreaCode:     "admin.dashboard.footer",
 		Position:     intPtr(2),
@@ -754,9 +808,11 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"dynamic":           true,
 			"refresh_endpoint":  "/admin/api/sales/revenue",
 		},
-	})
+	}); err != nil {
+		return nil, nil, nil, err
+	}
 	seedDefaultLayout(ctx, service, defaultViewer)
-	return service, registry, store
+	return service, registry, store, nil
 }
 
 func demoActivityFeedData(ctx context.Context, now time.Time, translator dashboard.TranslationService, locale string) []map[string]any {
@@ -883,8 +939,8 @@ func formatAgo(ctx context.Context, translator dashboard.TranslationService, ts 
 	return fmt.Sprintf("%d%s", days, translateOrDefault(ctx, translator, locale, "demo.time.days_suffix", "d"))
 }
 
-func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string, error) {
-	view := toDashboardView(data)
+func (r sampleRenderer) RenderPage(name string, page dashboard.Page, out ...io.Writer) (string, error) {
+	view := toDashboardView(page)
 	var buf bytes.Buffer
 	if err := r.tmpl.Execute(&buf, view); err != nil {
 		return "", err
@@ -900,8 +956,23 @@ func (r sampleRenderer) Render(name string, data any, out ...io.Writer) (string,
 type dashboardView struct {
 	Title       string
 	Description string
+	Locale      string
 	LastUpdated string
+	Assets      assetsView
+	Theme       themeView
 	Areas       []areaView
+}
+
+type assetsView struct {
+	JS  []string
+	CSS []string
+}
+
+type themeView struct {
+	Name      string
+	Variant   string
+	LogoURL   string
+	CSSInline template.CSS
 }
 
 type areaView struct {
@@ -917,101 +988,80 @@ type widgetView struct {
 	Metadata   map[string]any
 }
 
-func toDashboardView(data any) dashboardView {
-	raw, _ := data.(map[string]any)
+func toDashboardView(page dashboard.Page) dashboardView {
 	view := dashboardView{
-		Title:       stringOrDefault(raw["title"], "Dashboard"),
-		Description: stringOrDefault(raw["description"], ""),
+		Title:       page.Title,
+		Description: page.Description,
+		Locale:      page.Locale,
 		LastUpdated: time.Now().Format("Jan 2 · 3:04 PM MST"),
 	}
-	if ordered := orderedAreas(raw["ordered_areas"]); len(ordered) > 0 {
-		for _, areaRaw := range ordered {
-			view.Areas = append(view.Areas, buildAreaView(areaRaw, areaCodeOrSlot(areaRaw)))
-		}
-		return view
+	if view.Title == "" {
+		view.Title = "Dashboard"
 	}
-	if areas, ok := raw["areas"].(map[string]any); ok {
-		appendAreasByOrder(&view, areas)
+	if view.Locale == "" {
+		view.Locale = "en"
+	}
+	if page.Theme != nil {
+		view.Theme = themeView{
+			Name:      page.Theme.Name,
+			Variant:   page.Theme.Variant,
+			LogoURL:   page.Theme.AssetURL("logo"),
+			CSSInline: template.CSS(page.Theme.CSSVariablesInline()),
+		}
+	}
+	if page.Assets != nil {
+		view.Assets = assetsView{
+			JS:  append([]string{}, page.Assets.JS...),
+			CSS: append([]string{}, page.Assets.CSS...),
+		}
+	}
+	for _, area := range page.Areas {
+		view.Areas = append(view.Areas, buildAreaView(area))
 	}
 	return view
 }
 
-func buildAreaView(areaRaw map[string]any, fallback string) areaView {
-	area := areaView{Code: stringOrDefault(areaRaw["code"], fallback)}
-	for _, widgetMap := range toWidgetMaps(areaRaw["widgets"]) {
-		widget := widgetView{
-			ID:         stringOrDefault(widgetMap["id"], ""),
-			Definition: extractDefinition(widgetMap),
-		}
-		if cfg, ok := widgetMap["config"].(map[string]any); ok {
-			widget.Config = cfg
-		}
-		if dataMap := toDataMap(widgetMap["data"]); dataMap != nil {
-			widget.Data = dataMap
-		} else if widgetMap["data"] != nil {
-			widget.Data = map[string]any{"value": widgetMap["data"]}
-		}
-		widget.Metadata = toAnyMap(widgetMap["metadata"])
-		area.Widgets = append(area.Widgets, widget)
+func buildAreaView(area dashboard.PageArea) areaView {
+	view := areaView{Code: area.Code}
+	if view.Code == "" {
+		view.Code = area.Slot
 	}
-	return area
+	for _, widget := range area.Widgets {
+		view.Widgets = append(view.Widgets, buildWidgetView(widget))
+	}
+	return view
 }
 
-func orderedAreas(raw any) []map[string]any {
-	switch v := raw.(type) {
-	case []map[string]any:
-		return v
-	case []any:
-		items := make([]map[string]any, 0, len(v))
-		for _, item := range v {
-			if m, ok := item.(map[string]any); ok {
-				items = append(items, m)
-			}
-		}
-		return items
-	default:
+func buildWidgetView(widget dashboard.WidgetFrame) widgetView {
+	view := widgetView{
+		ID:         widget.ID,
+		Definition: widget.Definition,
+		Config:     widget.Config,
+		Metadata:   widgetMetadata(widget.Meta),
+	}
+	if view.Definition == "" {
+		view.Definition = extractDefinition(widget.Template)
+	}
+	if dataMap := toDataMap(widget.Data); dataMap != nil {
+		view.Data = dataMap
+	} else if widget.Data != nil {
+		view.Data = map[string]any{"value": widget.Data}
+	}
+	return view
+}
+
+func widgetMetadata(meta dashboard.WidgetMeta) map[string]any {
+	if meta.Layout == nil {
 		return nil
 	}
-}
-
-func appendAreasByOrder(view *dashboardView, areas map[string]any) {
-	order := []string{
-		"admin.dashboard.main",
-		"admin.dashboard.sidebar",
-		"admin.dashboard.footer",
+	return map[string]any{
+		"layout": map[string]any{
+			"row":     meta.Layout.Row,
+			"column":  meta.Layout.Column,
+			"width":   meta.Layout.Width,
+			"columns": meta.Layout.Columns,
+		},
 	}
-	handled := map[string]bool{}
-	for _, key := range order {
-		if areaRaw, ok := areas[key].(map[string]any); ok {
-			view.Areas = append(view.Areas, buildAreaView(areaRaw, key))
-			handled[key] = true
-		}
-	}
-	for code, areaRaw := range areas {
-		if handled[code] {
-			continue
-		}
-		if typed, ok := areaRaw.(map[string]any); ok {
-			view.Areas = append(view.Areas, buildAreaView(typed, code))
-		}
-	}
-}
-
-func areaCodeOrSlot(areaRaw map[string]any) string {
-	if code := stringOrDefault(areaRaw["code"], ""); code != "" {
-		return code
-	}
-	slot := stringOrDefault(areaRaw["slot"], "")
-	if slot == "main" {
-		return "admin.dashboard.main"
-	}
-	if slot == "sidebar" {
-		return "admin.dashboard.sidebar"
-	}
-	if slot == "footer" {
-		return "admin.dashboard.footer"
-	}
-	return slot
 }
 
 func toDataMap(value any) map[string]any {
@@ -1024,37 +1074,26 @@ func toDataMap(value any) map[string]any {
 		if m, ok := value.(map[string]any); ok {
 			return map[string]any(m)
 		}
-		return nil
+		return normalizeObjectMap(value)
 	}
 }
 
-func toWidgetMaps(raw any) []map[string]any {
-	if raw == nil {
-		return nil
-	}
-	if list, ok := raw.([]map[string]any); ok {
-		return list
-	}
-	if list, ok := raw.([]any); ok {
-		out := make([]map[string]any, 0, len(list))
-		for _, item := range list {
-			if widgetMap, ok := item.(map[string]any); ok {
-				out = append(out, widgetMap)
-			}
-		}
-		return out
-	}
-	return nil
-}
-
-func toAnyMap(value any) map[string]any {
+func normalizeObjectMap(value any) map[string]any {
 	if value == nil {
 		return nil
 	}
-	if typed, ok := value.(map[string]any); ok {
-		return typed
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return nil
 	}
-	return nil
+	var out map[string]any
+	if err := json.Unmarshal(payload, &out); err != nil {
+		return nil
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func stringOrDefault(value any, fallback string) string {
@@ -1064,12 +1103,9 @@ func stringOrDefault(value any, fallback string) string {
 	return fallback
 }
 
-func extractDefinition(widget map[string]any) string {
-	if def, ok := widget["definition"].(string); ok && def != "" {
-		return def
-	}
-	if tpl, ok := widget["template"].(string); ok && tpl != "" {
-		parts := strings.Split(tpl, "/")
+func extractDefinition(templatePath string) string {
+	if templatePath != "" {
+		parts := strings.Split(templatePath, "/")
 		last := parts[len(parts)-1]
 		return strings.TrimSuffix(last, ".html")
 	}
@@ -1330,10 +1366,11 @@ func intPtr(value int) *int {
 	return &v
 }
 
-func addWidgetOrDie(ctx context.Context, svc *dashboard.Service, label string, req dashboard.AddWidgetRequest) {
+func addWidget(ctx context.Context, svc *dashboard.Service, label string, req dashboard.AddWidgetRequest) error {
 	if err := svc.AddWidget(ctx, req); err != nil {
-		log.Fatalf("add %s widget: %v", label, err)
+		return fmt.Errorf("add %s widget: %w", label, err)
 	}
+	return nil
 }
 
 type demoSalesRepository struct{}
@@ -1352,10 +1389,16 @@ func (demoSalesRepository) FetchSalesSeries(_ context.Context, query dashboard.S
 }
 
 const dashboardTemplate = `<!DOCTYPE html>
-<html lang="en">
+<html lang="{{ .Locale }}">
   <head>
     <meta charset="utf-8" />
     <title>{{ .Title }}</title>
+    {{ range .Assets.CSS }}
+    <link rel="stylesheet" href="{{ . }}" />
+    {{ end }}
+    {{ range .Assets.JS }}
+    <script src="{{ . }}"></script>
+    {{ end }}
     <style>
       :root {
         color-scheme: light;
@@ -1614,10 +1657,13 @@ const dashboardTemplate = `<!DOCTYPE html>
       }
     </style>
   </head>
-  <body>
+  <body{{ if .Theme.CSSInline }} style="{{ .Theme.CSSInline }}"{{ end }}>
     <header>
       <div class="header__content">
         <div>
+          {{ if .Theme.LogoURL }}
+            <img src="{{ .Theme.LogoURL }}" alt="Theme logo" style="height: 32px; margin-bottom: 1rem;" />
+          {{ end }}
           <p class="eyebrow">Northwind Control Center</p>
           <h1>{{ .Title }}</h1>
           {{ if .Description }}
@@ -1628,7 +1674,10 @@ const dashboardTemplate = `<!DOCTYPE html>
         </div>
         <div class="header__meta">
           <span>Last updated {{ .LastUpdated }}</span>
-          <div class="badge">SLO · 99.95%</div>
+          <div class="badge">
+            {{ if .Theme.Name }}{{ .Theme.Name }}{{ else }}SLO{{ end }}
+            {{ if .Theme.Variant }} · {{ .Theme.Variant }}{{ else }} · 99.95%{{ end }}
+          </div>
         </div>
       </div>
     </header>

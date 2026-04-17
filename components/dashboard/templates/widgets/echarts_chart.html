@@ -1,9 +1,9 @@
 <div class="widget widget--echarts">
   {% if widget.data.title or widget.data.subtitle %}
   <header class="widget__header">
-    <h3>{{ widget.data.title or widget.config.title or "Chart" }}</h3>
+    <h3>{{ coalesce(widget.data.title, widget.config.title, "Chart") }}</h3>
     {% if widget.data.subtitle or widget.config.subtitle %}
-    <p class="widget__subtitle">{{ widget.data.subtitle or widget.config.subtitle }}</p>
+    <p class="widget__subtitle">{{ coalesce(widget.data.subtitle, widget.config.subtitle) }}</p>
     {% endif %}
   </header>
   {% endif %}

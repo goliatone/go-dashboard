@@ -180,6 +180,32 @@ func TestConfigureLayoutPropagatesLocale(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutPropagatesFallbackLocales(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolveAreaFn: func(input ResolveAreaInput) (ResolvedArea, error) {
+			if input.Locale != "fr" {
+				t.Fatalf("expected locale propagated to store, got %q", input.Locale)
+			}
+			if !reflect.DeepEqual([]string{"en"}, input.FallbackLocales) {
+				t.Fatalf("expected fallback locales propagated, got %+v", input.FallbackLocales)
+			}
+			return ResolvedArea{AreaCode: input.AreaCode}, nil
+		},
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		Areas:           []string{"admin.dashboard.main"},
+	})
+	if _, err := service.ConfigureLayout(context.Background(), ViewerContext{
+		UserID:          "user-fallback",
+		Locale:          "fr",
+		FallbackLocales: []string{"en"},
+	}); err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+}
+
 func TestConfigureLayoutAttachesThemeSelection(t *testing.T) {
 	selection := &ThemeSelection{
 		Name:    "admin",
@@ -242,6 +268,43 @@ func TestConfigureLayoutAttachesThemeSelection(t *testing.T) {
 	}
 	if receivedTheme.Tokens["--color-primary"] != "#111827" {
 		t.Fatalf("expected tokens propagated to provider")
+	}
+}
+
+func TestConfigureLayoutActivityFeedOverridePreservesTypedWidgetRuntime(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolved: map[string][]WidgetInstance{
+			"admin.dashboard.main": {
+				{
+					ID:           "activity-1",
+					DefinitionID: "admin.widget.recent_activity",
+					AreaCode:     "admin.dashboard.main",
+				},
+			},
+		},
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		Providers:       NewRegistry(),
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		ActivityFeed: StaticActivityFeed{
+			Items: []ActivityItem{
+				{User: "Ava", Action: "updated billing", Ago: 5 * time.Minute},
+			},
+		},
+	})
+
+	layout, err := service.ConfigureLayout(context.Background(), ViewerContext{UserID: "user-activity"})
+	if err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+	widget := layout.Areas["admin.dashboard.main"][0]
+	view, ok := widget.Metadata[widgetViewModelMetadataKey].(WidgetViewModel)
+	if !ok {
+		t.Fatalf("expected ActivityFeed override to store WidgetViewModel metadata")
+	}
+	if _, ok := view.(WidgetData); ok {
+		t.Fatalf("expected ActivityFeed override to preserve typed widget runtime instead of eager WidgetData")
 	}
 }
 
