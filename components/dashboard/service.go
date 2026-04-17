@@ -377,9 +377,10 @@ func (s *Service) resolveLayoutState(ctx context.Context, viewer ViewerContext) 
 	}
 	for _, area := range s.areaList() {
 		resolved, err := store.ResolveArea(ctx, ResolveAreaInput{
-			AreaCode: area,
-			Audience: viewer.Roles,
-			Locale:   viewer.Locale,
+			AreaCode:        area,
+			Audience:        viewer.Roles,
+			Locale:          viewer.Locale,
+			FallbackLocales: append([]string{}, viewer.FallbackLocales...),
 		})
 		if err != nil {
 			return Layout{}, LayoutOverrides{}, err
@@ -403,9 +404,10 @@ func (s *Service) ResolveArea(ctx context.Context, viewer ViewerContext, areaCod
 	}
 	theme := s.resolveTheme(ctx, viewer)
 	resolved, err := store.ResolveArea(ctx, ResolveAreaInput{
-		AreaCode: areaCode,
-		Audience: viewer.Roles,
-		Locale:   viewer.Locale,
+		AreaCode:        areaCode,
+		Audience:        viewer.Roles,
+		Locale:          viewer.Locale,
+		FallbackLocales: append([]string{}, viewer.FallbackLocales...),
 	})
 	if err != nil {
 		return ResolvedArea{}, err
