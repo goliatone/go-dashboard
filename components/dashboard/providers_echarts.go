@@ -1,7 +1,6 @@
 package dashboard
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/opts"
+	"github.com/go-echarts/go-echarts/v2/render"
 	"github.com/go-echarts/go-echarts/v2/types"
 )
 
@@ -32,13 +32,21 @@ type chartRenderContext struct {
 }
 
 type echartsWidgetView struct {
-	ChartHTML       string `json:"chart_html"`
-	ChartType       string `json:"chart_type"`
-	Title           string `json:"title"`
-	Subtitle        string `json:"subtitle"`
-	Theme           string `json:"theme"`
-	Dynamic         bool   `json:"dynamic,omitempty"`
-	RefreshEndpoint string `json:"refresh_endpoint,omitempty"`
+	ChartHTML       string   `json:"chart_html"`
+	ChartType       string   `json:"chart_type"`
+	Title           string   `json:"title"`
+	Subtitle        string   `json:"subtitle"`
+	Theme           string   `json:"theme"`
+	JSAssets        []string `json:"js_assets,omitempty"`
+	CSSAssets       []string `json:"css_assets,omitempty"`
+	Dynamic         bool     `json:"dynamic,omitempty"`
+	RefreshEndpoint string   `json:"refresh_endpoint,omitempty"`
+}
+
+type chartRenderPayload struct {
+	Markup string   `json:"markup"`
+	JS     []string `json:"js,omitempty"`
+	CSS    []string `json:"css,omitempty"`
 }
 
 // ThemeResolver selects a chart theme per viewer.
@@ -176,26 +184,37 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 	}
 
 	renderFn := func() (string, error) {
-		return p.render(chartTitle, chartSubtitle, xAxis, series, renderCtx)
+		payload, err := p.render(chartTitle, chartSubtitle, xAxis, series, renderCtx)
+		if err != nil {
+			return "", err
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return "", err
+		}
+		return string(raw), nil
 	}
 
 	var (
-		markup string
+		cached string
 		err    error
 	)
 
 	if p.cache != nil {
 		key := fmt.Sprintf("%s:%s:%s:%s", meta.Instance.DefinitionID, meta.Instance.ID, p.chartType, configHash(cfg))
-		markup, err = p.cache.GetOrRender(key, renderFn)
+		cached, err = p.cache.GetOrRender(key, renderFn)
 	} else {
-		markup, err = renderFn()
+		cached, err = renderFn()
 	}
 	if err != nil {
 		return echartsWidgetView{}, err
 	}
 
-	markup = addResponsiveBehavior(markup)
-	html := applySecurityDecorators(markup, nonceFrom(meta.Options))
+	payload, err := decodeChartRenderPayload(cached)
+	if err != nil {
+		return echartsWidgetView{}, err
+	}
+	html := applySecurityDecorators(payload.Markup, nonceFrom(meta.Options))
 
 	view := echartsWidgetView{
 		ChartHTML: html,
@@ -203,6 +222,8 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		Title:     displayTitle,
 		Subtitle:  displaySubtitle,
 		Theme:     renderCtx.Theme,
+		JSAssets:  append([]string{}, payload.JS...),
+		CSSAssets: append([]string{}, payload.CSS...),
 	}
 
 	if dynamic := boolValue(cfg["dynamic"]); dynamic {
@@ -245,7 +266,7 @@ func newEChartsRuntime(code, chartType string) widgetSpecRuntime {
 	}
 }
 
-func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (string, error) {
+func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (chartRenderPayload, error) {
 	options := p.globalChartOptions(title, subtitle, ctx)
 	switch p.chartType {
 	case "bar":
@@ -292,16 +313,45 @@ func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series 
 		}
 		return renderChart(gauge)
 	default:
-		return "", fmt.Errorf("unsupported chart type: %s", p.chartType)
+		return chartRenderPayload{}, fmt.Errorf("unsupported chart type: %s", p.chartType)
 	}
 }
 
-func renderChart(renderable interface{ Render(io.Writer) error }) (string, error) {
-	var buf bytes.Buffer
-	if err := renderable.Render(&buf); err != nil {
-		return "", err
+type snippetRenderable interface {
+	Render(io.Writer) error
+	RenderSnippet() render.ChartSnippet
+	GetAssets() opts.Assets
+}
+
+func renderChart(renderable snippetRenderable) (chartRenderPayload, error) {
+	if renderable == nil {
+		return chartRenderPayload{}, fmt.Errorf("chart renderable is nil")
 	}
-	return buf.String(), nil
+	snippet := renderable.RenderSnippet()
+	markup := addResponsiveBehavior(snippet.Element + snippet.Script)
+	assets := renderable.GetAssets()
+	return chartRenderPayload{
+		Markup: markup,
+		JS: appendUniqueStrings(
+			append([]string{}, assets.JSAssets.Values...),
+			assets.CustomizedJSAssets.Values...,
+		),
+		CSS: appendUniqueStrings(
+			append([]string{}, assets.CSSAssets.Values...),
+			assets.CustomizedCSSAssets.Values...,
+		),
+	}, nil
+}
+
+func decodeChartRenderPayload(raw string) (chartRenderPayload, error) {
+	if strings.TrimSpace(raw) == "" {
+		return chartRenderPayload{}, nil
+	}
+	var payload chartRenderPayload
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return chartRenderPayload{}, err
+	}
+	return payload, nil
 }
 
 func nonceFrom(options map[string]any) string {
