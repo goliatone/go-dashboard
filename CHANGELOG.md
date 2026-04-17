@@ -1,5 +1,31 @@
 # Changelog
 
+# [0.11.0](https://github.com/goliatone/go-dashboard/compare/v0.10.0...v0.11.0) - (2026-04-17)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.11.0 ([ad43a22](https://github.com/goliatone/go-dashboard/commit/ad43a22a857aab8c5795c3e06fe275f0d57291c1))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Better theme support ([8d8bf40](https://github.com/goliatone/go-dashboard/commit/8d8bf40e49bb2e3f3d8b62dcbaf702e48660bd85))  - (goliatone)
+- Page asset management ([63ce183](https://github.com/goliatone/go-dashboard/commit/63ce18387aec0bec47e95365c7ea3e1b6beb20c0))  - (goliatone)
+- Page setup ([91ac39f](https://github.com/goliatone/go-dashboard/commit/91ac39f60e0507e7365ecc4e6ba10da95abb1628))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.10.0 ([be02dad](https://github.com/goliatone/go-dashboard/commit/be02dadcbed6f5fe5faefdd7360b83581cf38e42))  - (goliatone)
+
+## <!-- 30 -->📝 Other
+
+- PR [#1](https://github.com/goliatone/go-dashboard/pull/1): component setup ([490e89f](https://github.com/goliatone/go-dashboard/commit/490e89fd4bba93df0732bf53ffee0cad92c03595))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([eb5449b](https://github.com/goliatone/go-dashboard/commit/eb5449ba963620a8aa8a914be040281dc80b0802))  - (goliatone)
+- Update examples ([4e33c5a](https://github.com/goliatone/go-dashboard/commit/4e33c5ad82c5d85c5bf41dc80bfc90c256cef8ac))  - (goliatone)
+- Update tests ([c721bd7](https://github.com/goliatone/go-dashboard/commit/c721bd760f9a83a365d0bbfdf271ed22bdd03d27))  - (goliatone)
+
 # [0.10.0](https://github.com/goliatone/go-dashboard/compare/v0.9.0...v0.10.0) - (2026-04-07)
 
 ## <!-- 13 -->📦 Bumps
