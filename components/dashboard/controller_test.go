@@ -437,8 +437,9 @@ func TestControllerPageAcceptsPreSerializedViewModelMetadata(t *testing.T) {
 						DefinitionID: "admin.widget.bar_chart",
 						Metadata: map[string]any{
 							widgetViewModelMetadataKey: map[string]any{
-								"chart_html": "<div>ok</div>",
+								"chart_html": "<div>ok</div><script>render()</script>",
 								"theme":      "wonderland",
+								"js_assets":  []any{"/dashboard/assets/echarts/echarts.min.js"},
 							},
 						},
 					},
@@ -460,8 +461,84 @@ func TestControllerPageAcceptsPreSerializedViewModelMetadata(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected pre-serialized metadata to normalize into object data, got %T", main.Widgets[0].Data)
 	}
-	if data["theme"] != "wonderland" || data["chart_html"] != "<div>ok</div>" {
+	if data["theme"] != "wonderland" || data["chart_html"] != "<div>ok</div><script>render()</script>" {
 		t.Fatalf("expected serialized metadata preserved, got %+v", data)
+	}
+	if _, ok := data["js_assets"]; ok {
+		t.Fatalf("expected widget page assets promoted out of widget data, got %+v", data)
+	}
+	if page.Assets == nil || len(page.Assets.JS) != 1 || page.Assets.JS[0] != "/dashboard/assets/echarts/echarts.min.js" {
+		t.Fatalf("expected page assets aggregated from widget data, got %+v", page.Assets)
+	}
+}
+
+func TestControllerPageAggregatesAndDeduplicatesWidgetAssets(t *testing.T) {
+	controller := NewController(ControllerOptions{
+		Service: &stubLayoutResolver{layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{
+						ID:           "chart-1",
+						DefinitionID: "admin.widget.bar_chart",
+						Metadata: map[string]any{
+							widgetViewModelMetadataKey: map[string]any{
+								"chart_html": "<div>a</div><script>a()</script>",
+								"js_assets":  []any{"/assets/echarts.min.js", "/assets/theme.js"},
+								"css_assets": []any{"/assets/chart.css"},
+							},
+						},
+					},
+					{
+						ID:           "chart-2",
+						DefinitionID: "admin.widget.line_chart",
+						Metadata: map[string]any{
+							widgetViewModelMetadataKey: map[string]any{
+								"chart_html": "<div>b</div><script>b()</script>",
+								"js_assets":  []any{"/assets/echarts.min.js"},
+							},
+						},
+					},
+				},
+			},
+		}},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	if page.Assets == nil {
+		t.Fatalf("expected page assets to be aggregated")
+	}
+	if !reflect.DeepEqual(page.Assets.JS, []string{"/assets/echarts.min.js", "/assets/theme.js"}) {
+		t.Fatalf("expected js assets deduped in order, got %+v", page.Assets.JS)
+	}
+	if !reflect.DeepEqual(page.Assets.CSS, []string{"/assets/chart.css"}) {
+		t.Fatalf("expected css assets preserved, got %+v", page.Assets.CSS)
+	}
+	main, ok := page.Area("main")
+	if !ok || len(main.Widgets) != 2 {
+		t.Fatalf("expected main widgets, got %+v", page.Areas)
+	}
+	for _, widget := range main.Widgets {
+		data, ok := widget.Data.(map[string]any)
+		if !ok {
+			t.Fatalf("expected aggregated chart widgets normalized to maps, got %T", widget.Data)
+		}
+		if _, ok := data["js_assets"]; ok {
+			t.Fatalf("expected widget js assets stripped after promotion, got %+v", data)
+		}
+		if _, ok := data["css_assets"]; ok {
+			t.Fatalf("expected widget css assets stripped after promotion, got %+v", data)
+		}
+	}
+	payload := page.LegacyPayload()
+	assets, ok := payload["assets"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected legacy payload to expose page assets, got %+v", payload["assets"])
+	}
+	if !reflect.DeepEqual(assets["js"], []string{"/assets/echarts.min.js", "/assets/theme.js"}) {
+		t.Fatalf("expected legacy payload js assets preserved, got %+v", assets["js"])
 	}
 }
 

@@ -180,6 +180,32 @@ func TestConfigureLayoutPropagatesLocale(t *testing.T) {
 	}
 }
 
+func TestConfigureLayoutPropagatesFallbackLocales(t *testing.T) {
+	store := &fakeWidgetStore{
+		resolveAreaFn: func(input ResolveAreaInput) (ResolvedArea, error) {
+			if input.Locale != "fr" {
+				t.Fatalf("expected locale propagated to store, got %q", input.Locale)
+			}
+			if !reflect.DeepEqual([]string{"en"}, input.FallbackLocales) {
+				t.Fatalf("expected fallback locales propagated, got %+v", input.FallbackLocales)
+			}
+			return ResolvedArea{AreaCode: input.AreaCode}, nil
+		},
+	}
+	service := NewService(Options{
+		WidgetStore:     store,
+		PreferenceStore: NewInMemoryPreferenceStore(),
+		Areas:           []string{"admin.dashboard.main"},
+	})
+	if _, err := service.ConfigureLayout(context.Background(), ViewerContext{
+		UserID:          "user-fallback",
+		Locale:          "fr",
+		FallbackLocales: []string{"en"},
+	}); err != nil {
+		t.Fatalf("ConfigureLayout returned error: %v", err)
+	}
+}
+
 func TestConfigureLayoutAttachesThemeSelection(t *testing.T) {
 	selection := &ThemeSelection{
 		Name:    "admin",

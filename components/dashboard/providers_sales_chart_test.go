@@ -33,6 +33,8 @@ func TestSalesChartProviderBuildsSeries(t *testing.T) {
 	html := html(data)
 	assert.Contains(t, html, "revenue")
 	assert.Contains(t, html, "orders")
+	assert.NotContains(t, html, "<!doctype html>")
+	assert.NotEmpty(t, data["js_assets"])
 }
 
 func TestSalesChartProviderPreservesThemeAndNonce(t *testing.T) {

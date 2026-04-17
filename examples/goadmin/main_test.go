@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -35,6 +36,8 @@ func TestDemoControllerPageUsesTypedContracts(t *testing.T) {
 	assert.Equal(t, "Resumen administrativo", page.Description)
 	require.NotNil(t, page.Theme)
 	assert.Equal(t, "https://cdn.goadmin.dev/assets/logo.svg", page.Theme.AssetURL("logo"))
+	require.NotNil(t, page.Assets)
+	assert.Contains(t, page.Assets.JS, dashboard.DefaultEChartsAssetsPath+"echarts.min.js")
 
 	userStats := requireWidgetByDefinition(t, page, "admin.widget.user_stats")
 	userStatsData := requireWidgetDataMap(t, userStats)
@@ -44,7 +47,9 @@ func TestDemoControllerPageUsesTypedContracts(t *testing.T) {
 	salesChartData := requireWidgetDataMap(t, salesChart)
 	assert.Equal(t, "wonderland", salesChartData["theme"])
 	markup, _ := salesChartData["chart_html"].(string)
-	assert.Contains(t, markup, dashboard.DefaultEChartsAssetsPath+"echarts.min.js")
+	assert.Contains(t, markup, "echarts.init")
+	assert.NotContains(t, markup, dashboard.DefaultEChartsAssetsPath+"echarts.min.js")
+	assert.NotContains(t, strings.ToLower(markup), "<!doctype html>")
 }
 
 func TestDemoHTMLRouteRendersTypedPageThemeAndCharts(t *testing.T) {
@@ -65,6 +70,8 @@ func TestDemoHTMLRouteRendersTypedPageThemeAndCharts(t *testing.T) {
 	assert.Contains(t, string(body), "ops-night")
 	assert.Contains(t, string(body), "--dashboard-accent: #22d3ee;")
 	assert.Contains(t, string(body), dashboard.DefaultEChartsAssetsPath+"echarts.min.js")
+	assert.Equal(t, 1, strings.Count(string(body), "<!DOCTYPE html>"))
+	assert.Equal(t, 1, strings.Count(string(body), dashboard.DefaultEChartsAssetsPath+"echarts.min.js"))
 }
 
 func TestDemoPreferencesRoutePersistsCanonicalLayout(t *testing.T) {
