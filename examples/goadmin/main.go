@@ -958,8 +958,14 @@ type dashboardView struct {
 	Description string
 	Locale      string
 	LastUpdated string
+	Assets      assetsView
 	Theme       themeView
 	Areas       []areaView
+}
+
+type assetsView struct {
+	JS  []string
+	CSS []string
 }
 
 type themeView struct {
@@ -1001,6 +1007,12 @@ func toDashboardView(page dashboard.Page) dashboardView {
 			Variant:   page.Theme.Variant,
 			LogoURL:   page.Theme.AssetURL("logo"),
 			CSSInline: template.CSS(page.Theme.CSSVariablesInline()),
+		}
+	}
+	if page.Assets != nil {
+		view.Assets = assetsView{
+			JS:  append([]string{}, page.Assets.JS...),
+			CSS: append([]string{}, page.Assets.CSS...),
 		}
 	}
 	for _, area := range page.Areas {
@@ -1381,6 +1393,12 @@ const dashboardTemplate = `<!DOCTYPE html>
   <head>
     <meta charset="utf-8" />
     <title>{{ .Title }}</title>
+    {{ range .Assets.CSS }}
+    <link rel="stylesheet" href="{{ . }}" />
+    {{ end }}
+    {{ range .Assets.JS }}
+    <script src="{{ . }}"></script>
+    {{ end }}
     <style>
       :root {
         color-scheme: light;
