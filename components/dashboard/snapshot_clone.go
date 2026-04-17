@@ -125,6 +125,7 @@ func clonePage(page Page) Page {
 		Description: page.Description,
 		Locale:      page.Locale,
 		Areas:       clonePageAreas(page.Areas),
+		Assets:      clonePageAssets(page.Assets),
 		Theme:       cloneThemeSelection(page.Theme),
 		State:       clonePageState(page.State),
 		Meta:        clonePageMeta(page.Meta),
@@ -205,6 +206,16 @@ func clonePageMeta(meta *PageMeta) *PageMeta {
 		return nil
 	}
 	return &PageMeta{Extensions: cloneRawMessages(meta.Extensions)}
+}
+
+func clonePageAssets(assets *PageAssets) *PageAssets {
+	if assets == nil || assets.Empty() {
+		return nil
+	}
+	return &PageAssets{
+		JS:  append([]string{}, assets.JS...),
+		CSS: append([]string{}, assets.CSS...),
+	}
 }
 
 func cloneRawMessages(in map[string]json.RawMessage) map[string]json.RawMessage {

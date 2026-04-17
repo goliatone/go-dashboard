@@ -4,6 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ coalesce(title, "Dashboard") }}</title>
+  {% if assets and assets.css %}
+    {% for href in assets.css %}
+  <link rel="stylesheet" href="{{ href }}">
+    {% endfor %}
+  {% endif %}
+  {% if assets and assets.js %}
+    {% for src in assets.js %}
+  <script src="{{ src }}"></script>
+    {% endfor %}
+  {% endif %}
 </head>
 <body>
   {% block content %}{% endblock %}

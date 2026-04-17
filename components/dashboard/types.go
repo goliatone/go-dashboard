@@ -112,6 +112,9 @@ type ResolveAreaInput struct {
 	AreaCode string
 	Audience []string
 	Locale   string
+	// FallbackLocales are consulted only when the requested locale cannot
+	// produce a localized widget payload for the resolved area.
+	FallbackLocales []string
 }
 
 // ResolvedArea is a container for widgets returned by the store.
@@ -144,6 +147,9 @@ type ViewerContext struct {
 	UserID string
 	Roles  []string
 	Locale string
+	// FallbackLocales provides an ordered locale fallback chain for
+	// widget/content consumers that support localized resolution.
+	FallbackLocales []string
 }
 
 // Layout describes the resolved widget instances per dashboard area.
