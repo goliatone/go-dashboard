@@ -8,6 +8,7 @@ Go Dashboard is a modular toolkit for building server rendered admin dashboards 
 - Router-agnostic HTTP/JSON/WebSocket endpoints (first-class support for go-router) plus a thin façade in `pkg/dashboard`.
 - Widget provider registry with analytics/chart helpers, schema validation, and manifest-driven discovery/CLI scaffolding.
 - Localization helpers for templates and providers, plus translation-aware analytics/chart payloads.
+- Optional application shell primitives for workbench-style admin modules with side rails, splitters, focus mode, browser-state restore, and theme-aware chrome.
 
 ## Packages
 
@@ -118,6 +119,18 @@ POST /admin/dashboard/preferences
 ```
 
 The route uses the authenticated viewer from go-router, so transports only need to send the desired ordering/hidden widgets (plus optional `layout_rows` to describe per-row widths). The data flows through `dashboard.SavePreferences` → `PreferenceStore`, and overrides are applied automatically during `ConfigureLayout`, which annotates each widget’s metadata with `layout.width`, `layout.row`, etc.
+
+## Application Shells
+
+Modules that need a workbench layout can opt into `dashboard.Shell` without
+changing existing widget dashboards. Add shell assets with
+`PageAssets.AddShellAssets("")`, serve them from `/dashboard/assets/shell/`, and
+populate `Page.Shell` with module-owned region content. The shell runtime is
+framework-free and supports collapse, resize, keyboard resize, focus mode, and
+versioned browser storage keyed by surface and viewer fallback.
+
+See `components/dashboard/README.md` for the data-attribute contract, theme
+tokens, validation command, and `go-admin` migration handoff criteria.
 
 ## Widget Discovery & CLI
 
