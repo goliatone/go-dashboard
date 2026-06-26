@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -537,6 +538,7 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
+//nolint:gocyclo,funlen // The example fixture is a linear dashboard assembly kept in one place for readability.
 func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore, error) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
@@ -570,9 +572,13 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			},
 		},
 	}
-	_, _ = store.EnsureDefinition(ctx, customDefinition)
-	_ = registry.RegisterDefinition(customDefinition)
-	_ = registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+	if _, err := store.EnsureDefinition(ctx, customDefinition); err != nil {
+		return nil, nil, nil, fmt.Errorf("ensure welcome definition: %w", err)
+	}
+	if err := registry.RegisterDefinition(customDefinition); err != nil {
+		return nil, nil, nil, fmt.Errorf("register welcome definition: %w", err)
+	}
+	if err := registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
 		configMessage := meta.Instance.Configuration["message"]
 		messageMap := toStringMap(configMessage)
 		fallback := translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.message", "Operations look steady. Use this space for runbook snippets or rotating notices.")
@@ -593,7 +599,9 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			"headline": translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.headline", fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID)),
 			"message":  message,
 		}, nil
-	}))
+	})); err != nil {
+		return nil, nil, nil, fmt.Errorf("register welcome provider: %w", err)
+	}
 
 	service := dashboard.NewService(dashboard.Options{
 		WidgetStore:   store,
@@ -1006,7 +1014,7 @@ func toDashboardView(page dashboard.Page) dashboardView {
 			Name:      page.Theme.Name,
 			Variant:   page.Theme.Variant,
 			LogoURL:   page.Theme.AssetURL("logo"),
-			CSSInline: template.CSS(page.Theme.CSSVariablesInline()),
+			CSSInline: template.CSS(page.Theme.CSSVariablesInline()), // #nosec G203 -- theme CSS is generated from sanitized dashboard theme variables.
 		}
 	}
 	if page.Assets != nil {
@@ -1071,9 +1079,6 @@ func toDataMap(value any) map[string]any {
 	case map[string]any:
 		return v
 	default:
-		if m, ok := value.(map[string]any); ok {
-			return map[string]any(m)
-		}
 		return normalizeObjectMap(value)
 	}
 }
@@ -1154,7 +1159,7 @@ func chartMarkup(data map[string]any) template.HTML {
 		return ""
 	}
 	if html, ok := data["chart_html"].(string); ok && html != "" {
-		return template.HTML(html)
+		return template.HTML(html) // #nosec G203 -- chart HTML is produced by trusted go-echarts providers.
 	}
 	return ""
 }
@@ -1198,34 +1203,40 @@ func intFromAny(value any) (int, bool) {
 	switch v := value.(type) {
 	case int:
 		return v, true
-	case int8:
-		return int(v), true
-	case int16:
-		return int(v), true
-	case int32:
-		return int(v), true
-	case int64:
-		return int(v), true
-	case uint:
-		return int(v), true
-	case uint8:
-		return int(v), true
-	case uint16:
-		return int(v), true
-	case uint32:
-		return int(v), true
-	case uint64:
-		return int(v), true
-	case float32:
-		return int(v), true
-	case float64:
-		return int(v), true
 	case string:
 		if parsed, err := strconv.Atoi(v); err == nil {
 			return parsed, true
 		}
+		return 0, false
 	}
-	return 0, false
+
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return intFromInt64(reflected.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return intFromUint64(reflected.Uint())
+	case reflect.Float32, reflect.Float64:
+		return int(reflected.Float()), true
+	default:
+		return 0, false
+	}
+}
+
+func intFromInt64(value int64) (int, bool) {
+	parsed, err := strconv.Atoi(strconv.FormatInt(value, 10))
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func intFromUint64(value uint64) (int, bool) {
+	parsed, err := strconv.Atoi(strconv.FormatUint(value, 10))
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }
 
 func clampSpan(width int) int {
