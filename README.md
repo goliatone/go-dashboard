@@ -173,9 +173,11 @@ go-dashboard now mirrors go-cms localization flows:
 
 ## Development Workflow
 
-- `./taskfile dashboard:test` – run the focused dashboard test suite (same target used by CI).
-- `./taskfile dashboard:lint` – execute Go vet across dashboard components.
-- `./taskfile dev:test` – full repository test run, useful before releasing.
+- `./taskfile dashboard:test` – run the focused dashboard test suite.
+- `./taskfile dashboard:lint` – run golangci-lint across dashboard packages.
+- `./taskfile go:lint:new` – check new lint findings against `origin/main`.
+- `./taskfile go:quality:pr` – run the local PR gate: format check, tests, and change-scoped lint.
+- `./taskfile go:quality:all` – run the full local quality path, including race tests and security scans.
 
 See `docs/TROUBLESHOOTING.md` if bootstrap, authorization, or provider issues appear during integration.
 

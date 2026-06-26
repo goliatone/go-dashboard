@@ -1,4 +1,5 @@
 # Build cache for local go commands
+.tmp/
 .gocache/
 
 # Go build artifacts
