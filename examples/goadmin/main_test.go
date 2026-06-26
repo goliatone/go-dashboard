@@ -74,6 +74,19 @@ func TestDemoHTMLRouteRendersTypedPageThemeAndCharts(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(string(body), dashboard.DefaultEChartsAssetsPath+"echarts.min.js"))
 }
 
+func TestExampleShellPageIncludesShellAssetsOnce(t *testing.T) {
+	page := exampleShellPage()
+
+	require.NotNil(t, page.Shell)
+	require.NotNil(t, page.Assets)
+	assert.Contains(t, page.Assets.CSS, dashboard.DefaultShellAssetsPath+"shell.css")
+	assert.Contains(t, page.Assets.JS, dashboard.DefaultShellAssetsPath+"shell.js")
+
+	page.Assets.AddShellAssets("")
+	assert.Equal(t, 1, countString(page.Assets.CSS, dashboard.DefaultShellAssetsPath+"shell.css"))
+	assert.Equal(t, 1, countString(page.Assets.JS, dashboard.DefaultShellAssetsPath+"shell.js"))
+}
+
 func TestDemoPreferencesRoutePersistsCanonicalLayout(t *testing.T) {
 	harness := newDemoHarness(t)
 	viewer := dashboard.ViewerContext{UserID: sampleViewerID, Roles: []string{"admin"}, Locale: "en"}
@@ -183,6 +196,16 @@ func hasWidgetID(page dashboard.Page, id string) bool {
 		}
 	}
 	return false
+}
+
+func countString(values []string, needle string) int {
+	count := 0
+	for _, value := range values {
+		if value == needle {
+			count++
+		}
+	}
+	return count
 }
 
 func requireWidgetDataMap(t *testing.T, widget dashboard.WidgetFrame) map[string]any {
