@@ -1,5 +1,26 @@
 # Changelog
 
+# [0.13.0](https://github.com/goliatone/go-dashboard/compare/v0.12.1...v0.13.0) - (2026-06-26)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.13.0 ([7183672](https://github.com/goliatone/go-dashboard/commit/71836727b44022457c020569c50a228003ec474d))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Dashboard shell component ([afc51fd](https://github.com/goliatone/go-dashboard/commit/afc51fd1b4a9df9fcdb87afcd40d2a111cfebed4))  - (goliatone)
+- Shell example ([0eb208c](https://github.com/goliatone/go-dashboard/commit/0eb208c8604f035d7c5050d1f5119d332c0766ad))  - (goliatone)
+- Shell templates ([061bb2d](https://github.com/goliatone/go-dashboard/commit/061bb2df3cc4964c86fa50ace078a5408e92c5ae))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.12.1 ([05d9b9d](https://github.com/goliatone/go-dashboard/commit/05d9b9dda379263c6ca8d57861a903ebf17b6720))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update docs ([d6f7774](https://github.com/goliatone/go-dashboard/commit/d6f7774a9a09f260fa57289ad2746078e26abbae))  - (goliatone)
+- Update deps ([09c119e](https://github.com/goliatone/go-dashboard/commit/09c119e8aeaa94954c629c4478eb3965b3ce4bf7))  - (goliatone)
+
 # [0.12.1](https://github.com/goliatone/go-dashboard/compare/v0.12.0...v0.12.1) - (2026-06-02)
 
 ## <!-- 13 -->📦 Bumps
