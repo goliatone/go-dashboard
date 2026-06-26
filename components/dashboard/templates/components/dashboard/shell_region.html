@@ -1,0 +1,16 @@
+<section id="dashboard-shell-region-{{ region.id }}"
+  class="dashboard-shell__region dashboard-shell__region--{{ region.role }} dashboard-shell__region--{{ region.placement }}"
+  data-shell-region="{{ region.id }}"
+  data-shell-role="{{ region.role }}"
+  data-shell-placement="{{ region.placement }}"
+  {% if region.collapsible %}data-shell-rail="{{ region.id }}"{% endif %}
+  {% if region.collapsible %}data-collapsed="{% if region.collapsed %}true{% else %}false{% endif %}"{% endif %}
+  {% if region.resizable %}data-shell-resizable data-shell-edge="{{ region.resize_edge }}" data-shell-min="{{ region.sizing.min }}" data-shell-max="{{ region.sizing.max }}" data-shell-default-size="{{ region.sizing.default }}"{% endif %}
+  {% if region.focus_target %}data-shell-focus-target="{{ region.id }}"{% endif %}
+  aria-label="{{ region.label }}">
+  {% if region.content.html %}
+    {{ region.content.html|safe }}
+  {% elif region.content.text %}
+    <div class="dashboard-shell__region-text">{{ region.content.text }}</div>
+  {% endif %}
+</section>

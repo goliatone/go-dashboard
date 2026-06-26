@@ -1,0 +1,10 @@
+<button class="dashboard-shell__icon-button"
+  type="button"
+  data-shell-action="{{ action.id }}"
+  data-shell-action-kind="{{ action.kind }}"
+  {% if action.toggle_region %}data-shell-toggle="{{ action.region_id }}" aria-expanded="{% if action.expanded %}true{% else %}false{% endif %}"{% endif %}
+  {% if action.focus %}data-shell-focus-toggle="{{ action.target_id }}" aria-pressed="{% if action.pressed %}true{% else %}false{% endif %}"{% endif %}
+  {% if action.exit_focus %}data-shell-focus-exit aria-pressed="{% if action.pressed %}true{% else %}false{% endif %}"{% endif %}
+  {% if action.button_pressed %}aria-pressed="true"{% endif %}>
+  {{ action.label }}
+</button>

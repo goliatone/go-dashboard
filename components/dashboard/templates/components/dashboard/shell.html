@@ -1,0 +1,49 @@
+<section class="dashboard-shell"
+  data-dashboard-shell
+  data-dashboard-shell-surface="{{ shell.surface_id }}"
+  data-dashboard-shell-namespace="{{ shell.storage.namespace }}"
+  data-dashboard-shell-storage-key="{{ shell.storage.key }}"
+  data-dashboard-shell-version="{{ shell.storage.version }}"
+  {% if shell.storage.module_id %}data-dashboard-shell-module="{{ shell.storage.module_id }}"{% endif %}
+  {% if shell.storage.viewer_id %}data-dashboard-shell-viewer="{{ shell.storage.viewer_id }}"{% endif %}
+  {% if shell.label %}aria-label="{{ shell.label }}"{% endif %}>
+  <div class="dashboard-shell__toolbar" data-dashboard-shell-toolbar>
+    {% for region in shell.regions %}
+      {% if region.collapsible %}
+      <button class="dashboard-shell__icon-button"
+        type="button"
+        data-shell-toggle="{{ region.id }}"
+        aria-expanded="{% if region.collapsed %}false{% else %}true{% endif %}">
+        {{ region.label }}
+      </button>
+      {% endif %}
+    {% endfor %}
+    {% for target in shell.focus_targets %}
+      <button class="dashboard-shell__icon-button"
+        type="button"
+        data-shell-focus-toggle="{{ target.id }}"
+        aria-pressed="{% if target.active %}true{% else %}false{% endif %}">
+        {{ target.label }}
+      </button>
+    {% endfor %}
+    {% if shell.focus_targets|length > 0 %}
+    <button class="dashboard-shell__icon-button" type="button" data-shell-focus-exit aria-pressed="false">
+      Exit focus
+    </button>
+    {% endif %}
+    {% for action in shell.actions %}
+      {% include "components/dashboard/shell_action.html" with action=action locale=locale %}
+    {% endfor %}
+  </div>
+  <div class="dashboard-shell__body">
+    {% for region in shell.regions %}
+      {% if region.resize_before %}
+        {% include "components/dashboard/shell_splitter.html" with region=region locale=locale %}
+      {% endif %}
+      {% include "components/dashboard/shell_region.html" with region=region locale=locale %}
+      {% if region.resize_after %}
+        {% include "components/dashboard/shell_splitter.html" with region=region locale=locale %}
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>

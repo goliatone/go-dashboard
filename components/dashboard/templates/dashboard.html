@@ -17,6 +17,9 @@
 </style>
 {% endif %}
 <div class="dashboard" {% if theme and theme.variant %}data-theme="{{ theme.variant }}"{% endif %}>
+  {% if shell %}
+  {% include "components/dashboard/shell.html" with shell=shell locale=locale %}
+  {% else %}
   <div class="dashboard__header">
     <h1>{{ T("dashboard.page.title", locale, coalesce(title, "Dashboard")) }}</h1>
     {% if description %}
@@ -34,5 +37,6 @@
   <div class="dashboard__footer">
     {% include "components/dashboard/area.html" with area=areas.footer locale=locale %}
   </div>
+  {% endif %}
 </div>
 {% endblock %}
