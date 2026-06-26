@@ -97,7 +97,11 @@ func embeddedTemplateBaseDir() (string, error) {
 			return
 		}
 		if err := copyEmbeddedTemplates(dir); err != nil {
-			_ = os.RemoveAll(dir)
+			removeErr := os.RemoveAll(dir)
+			if removeErr != nil {
+				embeddedTemplateRootErr = removeErr
+				return
+			}
 			embeddedTemplateRootErr = err
 			return
 		}
@@ -120,16 +124,16 @@ func copyEmbeddedTemplates(root string) error {
 		}
 		target := filepath.Join(root, rel)
 		if entry.IsDir() {
-			return os.MkdirAll(target, 0o755)
+			return os.MkdirAll(target, 0o750)
 		}
 		data, err := fs.ReadFile(embeddedTemplates, path)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
 			return err
 		}
-		return os.WriteFile(target, data, 0o644)
+		return os.WriteFile(target, data, 0o600)
 	})
 }
 
@@ -208,7 +212,10 @@ func (renderer templatePageRenderer) normalizeWidgetTemplates(payload map[string
 	if renderer.rootDir == "" || len(payload) == 0 {
 		return
 	}
-	areas, _ := payload["areas"].(map[string]any)
+	areas, ok := payload["areas"].(map[string]any)
+	if !ok {
+		return
+	}
 	for _, rawArea := range areas {
 		area, ok := rawArea.(map[string]any)
 		if !ok {
@@ -219,7 +226,10 @@ func (renderer templatePageRenderer) normalizeWidgetTemplates(payload map[string
 			continue
 		}
 		for _, widget := range widgets {
-			templateName, _ := widget["template"].(string)
+			templateName, ok := widget["template"].(string)
+			if !ok {
+				continue
+			}
 			if templateName == "" || filepath.IsAbs(templateName) {
 				continue
 			}

@@ -1,7 +1,7 @@
 package dashboard
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"sync"
@@ -85,6 +85,6 @@ func configHash(cfg map[string]any) string {
 	if err != nil {
 		return "invalid"
 	}
-	sum := sha1.Sum(b)
+	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }

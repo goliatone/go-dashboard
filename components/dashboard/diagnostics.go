@@ -79,7 +79,7 @@ func (c *Controller) Diagnostics(ctx context.Context, viewer ViewerContext) (Das
 			Preferences: cloneLayoutOverrides(overrides),
 			Theme:       cloneThemeSelection(layout.Theme),
 			Layout:      buildLayoutDiagnostics(c.areaCodes(), layout),
-			Page:        ptr(clonePage(page)),
+			Page:        new(clonePage(page)),
 		}, nil
 	}
 	if provider, ok := c.service.(diagnosticsProvider); ok {
@@ -91,7 +91,7 @@ func (c *Controller) Diagnostics(ctx context.Context, viewer ViewerContext) (Das
 		if err != nil {
 			return DashboardDiagnostics{}, err
 		}
-		resolved.Page = ptr(clonePage(page))
+		resolved.Page = new(clonePage(page))
 		if resolved.Theme == nil {
 			resolved.Theme = cloneThemeSelection(page.Theme)
 		}
@@ -104,7 +104,7 @@ func (c *Controller) Diagnostics(ctx context.Context, viewer ViewerContext) (Das
 	return DashboardDiagnostics{
 		Viewer: viewer,
 		Theme:  cloneThemeSelection(page.Theme),
-		Page:   ptr(clonePage(page)),
+		Page:   new(clonePage(page)),
 	}, nil
 }
 
@@ -123,5 +123,3 @@ func (c *Controller) areaCodes() []string {
 	}
 	return codes
 }
-
-func ptr[T any](value T) *T { return &value }

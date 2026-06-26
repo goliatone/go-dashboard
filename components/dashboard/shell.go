@@ -41,7 +41,7 @@ var shellTokenPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]*$`)
 type Shell struct {
 	SurfaceID      string             `json:"surface_id"`
 	Label          string             `json:"label,omitempty"`
-	Storage        ShellStorage       `json:"storage,omitempty"`
+	Storage        ShellStorage       `json:"storage"`
 	Regions        []ShellRegion      `json:"regions"`
 	Actions        []ShellAction      `json:"actions,omitempty"`
 	FocusTargets   []ShellFocusTarget `json:"focus_targets,omitempty"`
@@ -64,12 +64,12 @@ type ShellRegion struct {
 	Role        string             `json:"role"`
 	Placement   string             `json:"placement"`
 	Label       string             `json:"label,omitempty"`
-	Content     ShellRegionContent `json:"content,omitempty"`
+	Content     ShellRegionContent `json:"content"`
 	Collapsible bool               `json:"collapsible,omitempty"`
 	Collapsed   bool               `json:"collapsed,omitempty"`
 	Resizable   bool               `json:"resizable,omitempty"`
 	ResizeEdge  string             `json:"resize_edge,omitempty"`
-	Sizing      ShellPaneSizing    `json:"sizing,omitempty"`
+	Sizing      ShellPaneSizing    `json:"sizing"`
 	FocusTarget bool               `json:"focus_target,omitempty"`
 	Attributes  map[string]string  `json:"attributes,omitempty"`
 }
@@ -109,92 +109,28 @@ type ShellFocusTarget struct {
 // Normalize validates the shell and returns a copy with safe defaults applied.
 func (shell Shell) Normalize() (Shell, error) {
 	shell.SurfaceID = strings.TrimSpace(shell.SurfaceID)
-	if shell.SurfaceID == "" {
-		return Shell{}, fmt.Errorf("dashboard shell: surface id is required")
+	if err := shell.validateSurface(); err != nil {
+		return Shell{}, err
 	}
-	if !validShellToken(shell.SurfaceID) {
-		return Shell{}, fmt.Errorf("dashboard shell: invalid surface id %q", shell.SurfaceID)
+	shell.Storage = normalizeShellStorage(shell.Storage)
+
+	regions, seenRegions, focusTargets, err := normalizeShellRegions(shell.Regions)
+	if err != nil {
+		return Shell{}, err
 	}
-	if shell.Storage.Namespace == "" {
-		shell.Storage.Namespace = DefaultShellStateNamespace
-	}
-	if shell.Storage.Version <= 0 {
-		shell.Storage.Version = DefaultShellStateVersion
-	}
-	if len(shell.Regions) == 0 {
-		return Shell{}, fmt.Errorf("dashboard shell: at least one region is required")
+	shell.Regions = regions
+
+	err = shell.normalizeExplicitFocusTargets(seenRegions, focusTargets)
+	if err != nil {
+		return Shell{}, err
 	}
 
-	seenRegions := map[string]bool{}
-	focusTargets := map[string]bool{}
-	for idx := range shell.Regions {
-		region, err := normalizeShellRegion(shell.Regions[idx])
-		if err != nil {
-			return Shell{}, err
-		}
-		if seenRegions[region.ID] {
-			return Shell{}, fmt.Errorf("dashboard shell: duplicate region id %q", region.ID)
-		}
-		seenRegions[region.ID] = true
-		if region.FocusTarget {
-			focusTargets[region.ID] = true
-		}
-		shell.Regions[idx] = region
+	actions, err := normalizeShellActions(shell.Actions, seenRegions, focusTargets)
+	if err != nil {
+		return Shell{}, err
 	}
-
-	for idx := range shell.FocusTargets {
-		target := shell.FocusTargets[idx]
-		target.ID = strings.TrimSpace(target.ID)
-		if !seenRegions[target.ID] {
-			return Shell{}, fmt.Errorf("dashboard shell: focus target %q does not match a region", target.ID)
-		}
-		if target.Label == "" {
-			target.Label = target.ID
-		}
-		focusTargets[target.ID] = true
-		shell.FocusTargets[idx] = target
-	}
-	if len(shell.FocusTargets) == 0 && len(focusTargets) > 0 {
-		for _, region := range shell.Regions {
-			if focusTargets[region.ID] {
-				shell.FocusTargets = append(shell.FocusTargets, ShellFocusTarget{ID: region.ID, Label: region.Label})
-			}
-		}
-	}
-
-	for idx := range shell.Actions {
-		action, err := normalizeShellAction(shell.Actions[idx], seenRegions)
-		if err != nil {
-			return Shell{}, err
-		}
-		if action.Kind == ShellActionKindFocus {
-			focusTargets[action.TargetID] = true
-		}
-		shell.Actions[idx] = action
-	}
-
-	for idx := range shell.Regions {
-		if focusTargets[shell.Regions[idx].ID] {
-			shell.Regions[idx].FocusTarget = true
-		}
-	}
-	if len(shell.FocusTargets) == 0 && len(focusTargets) > 0 {
-		for _, region := range shell.Regions {
-			if focusTargets[region.ID] {
-				shell.FocusTargets = append(shell.FocusTargets, ShellFocusTarget{ID: region.ID, Label: region.Label})
-			}
-		}
-	} else if len(shell.FocusTargets) > 0 {
-		seenFocus := map[string]bool{}
-		for _, target := range shell.FocusTargets {
-			seenFocus[target.ID] = true
-		}
-		for _, region := range shell.Regions {
-			if focusTargets[region.ID] && !seenFocus[region.ID] {
-				shell.FocusTargets = append(shell.FocusTargets, ShellFocusTarget{ID: region.ID, Label: region.Label})
-			}
-		}
-	}
+	shell.Actions = actions
+	shell.applyFocusTargets(focusTargets)
 
 	return shell, nil
 }
@@ -219,6 +155,101 @@ func (storage ShellStorage) StorageKey(surfaceID string) string {
 		parts = append(parts, "viewer", "anonymous")
 	}
 	return strings.Join(parts, ":")
+}
+
+func (shell Shell) validateSurface() error {
+	if shell.SurfaceID == "" {
+		return fmt.Errorf("dashboard shell: surface id is required")
+	}
+	if !validShellToken(shell.SurfaceID) {
+		return fmt.Errorf("dashboard shell: invalid surface id %q", shell.SurfaceID)
+	}
+	return nil
+}
+
+func normalizeShellStorage(storage ShellStorage) ShellStorage {
+	if storage.Namespace == "" {
+		storage.Namespace = DefaultShellStateNamespace
+	}
+	if storage.Version <= 0 {
+		storage.Version = DefaultShellStateVersion
+	}
+	return storage
+}
+
+func normalizeShellRegions(regions []ShellRegion) ([]ShellRegion, map[string]bool, map[string]bool, error) {
+	if len(regions) == 0 {
+		return nil, nil, nil, fmt.Errorf("dashboard shell: at least one region is required")
+	}
+	seenRegions := map[string]bool{}
+	focusTargets := map[string]bool{}
+	for idx := range regions {
+		region, err := normalizeShellRegion(regions[idx])
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if seenRegions[region.ID] {
+			return nil, nil, nil, fmt.Errorf("dashboard shell: duplicate region id %q", region.ID)
+		}
+		seenRegions[region.ID] = true
+		if region.FocusTarget {
+			focusTargets[region.ID] = true
+		}
+		regions[idx] = region
+	}
+	return regions, seenRegions, focusTargets, nil
+}
+
+func (shell *Shell) normalizeExplicitFocusTargets(regions map[string]bool, focusTargets map[string]bool) error {
+	for idx := range shell.FocusTargets {
+		target := shell.FocusTargets[idx]
+		target.ID = strings.TrimSpace(target.ID)
+		if !regions[target.ID] {
+			return fmt.Errorf("dashboard shell: focus target %q does not match a region", target.ID)
+		}
+		if target.Label == "" {
+			target.Label = target.ID
+		}
+		focusTargets[target.ID] = true
+		shell.FocusTargets[idx] = target
+	}
+	return nil
+}
+
+func normalizeShellActions(
+	actions []ShellAction,
+	regions map[string]bool,
+	focusTargets map[string]bool,
+) ([]ShellAction, error) {
+	for idx := range actions {
+		action, err := normalizeShellAction(actions[idx], regions)
+		if err != nil {
+			return nil, err
+		}
+		if action.Kind == ShellActionKindFocus {
+			focusTargets[action.TargetID] = true
+		}
+		actions[idx] = action
+	}
+	return actions, nil
+}
+
+func (shell *Shell) applyFocusTargets(focusTargets map[string]bool) {
+	for idx := range shell.Regions {
+		if focusTargets[shell.Regions[idx].ID] {
+			shell.Regions[idx].FocusTarget = true
+		}
+	}
+
+	seenFocus := map[string]bool{}
+	for _, target := range shell.FocusTargets {
+		seenFocus[target.ID] = true
+	}
+	for _, region := range shell.Regions {
+		if focusTargets[region.ID] && !seenFocus[region.ID] {
+			shell.FocusTargets = append(shell.FocusTargets, ShellFocusTarget{ID: region.ID, Label: region.Label})
+		}
+	}
 }
 
 func normalizeShellRegion(region ShellRegion) (ShellRegion, error) {

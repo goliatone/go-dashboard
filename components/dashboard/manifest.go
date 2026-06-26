@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -71,11 +72,16 @@ func (r *Registry) LoadManifestDocument(doc *WidgetManifestDocument) error {
 
 // ReadManifest loads a manifest file from disk without registering it.
 func ReadManifest(path string) (*WidgetManifestDocument, error) {
-	f, err := os.Open(path) //nolint:gosec
+	f, err := os.Open(path) // #nosec G304 -- manifests are explicitly loaded from caller-provided local paths.
 	if err != nil {
 		return nil, fmt.Errorf("dashboard: open manifest %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		closeErr := f.Close()
+		if closeErr != nil {
+			return
+		}
+	}()
 	doc, err := DecodeManifest(f)
 	if err != nil {
 		return nil, fmt.Errorf("dashboard: decode manifest %s: %w", path, err)
@@ -90,7 +96,7 @@ func DecodeManifest(r io.Reader) (*WidgetManifestDocument, error) {
 	decoder.KnownFields(true)
 	var doc WidgetManifestDocument
 	if err := decoder.Decode(&doc); err != nil {
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("dashboard: manifest is empty")
 		}
 		return nil, fmt.Errorf("dashboard: parse manifest: %w", err)

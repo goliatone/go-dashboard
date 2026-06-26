@@ -81,7 +81,39 @@ func (cmd *scaffoldCmd) Run(_ context.Context) error {
 		providerEntry = fmt.Sprintf("%s.New%s", cmd.ProviderPackage, providerType)
 	}
 
-	entry := dashboard.ManifestWidget{
+	entry := cmd.manifestEntry(schema, providerEntry)
+	cmd.applyManifestEntry(doc, entry)
+
+	sort.Slice(doc.Widgets, func(i, j int) bool {
+		return doc.Widgets[i].Definition.Code < doc.Widgets[j].Definition.Code
+	})
+
+	if err := writeManifest(manifestPath, doc); err != nil {
+		return err
+	}
+
+	if cmd.SkipProvider {
+		if _, err := fmt.Fprintf(os.Stdout, "✓ Added %s to %s (provider entry recorded as %s)\n", cmd.Code, manifestPath, providerEntry); err != nil {
+			return fmt.Errorf("widgetctl: write status: %w", err)
+		}
+		return nil
+	}
+
+	providerPath := cmd.ProviderOut
+	if providerPath == "" {
+		providerPath = filepath.Join("components", "dashboard", "providers", fmt.Sprintf("%s_provider.go", sanitizeFileName(cmd.Code)))
+	}
+	if err := writeProviderStub(providerPath, providerType, cmd.Code, cmd.Overwrite); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(os.Stdout, "✓ Added %s to %s and generated %s\n", cmd.Code, manifestPath, providerPath); err != nil {
+		return fmt.Errorf("widgetctl: write status: %w", err)
+	}
+	return nil
+}
+
+func (cmd *scaffoldCmd) manifestEntry(schema map[string]any, providerEntry string) dashboard.ManifestWidget {
+	return dashboard.ManifestWidget{
 		Definition: dashboard.WidgetDefinition{
 			Code:        cmd.Code,
 			Name:        cmd.Name,
@@ -101,45 +133,18 @@ func (cmd *scaffoldCmd) Run(_ context.Context) error {
 		Maintainers: cmd.Maintainer,
 		Tags:        cmd.Tag,
 	}
+}
 
+func (cmd *scaffoldCmd) applyManifestEntry(doc *dashboard.WidgetManifestDocument, entry dashboard.ManifestWidget) {
 	if cmd.Overwrite {
-		replaced := false
 		for idx := range doc.Widgets {
 			if doc.Widgets[idx].Definition.Code == cmd.Code {
 				doc.Widgets[idx] = entry
-				replaced = true
-				break
+				return
 			}
 		}
-		if !replaced {
-			doc.Widgets = append(doc.Widgets, entry)
-		}
-	} else {
-		doc.Widgets = append(doc.Widgets, entry)
 	}
-
-	sort.Slice(doc.Widgets, func(i, j int) bool {
-		return doc.Widgets[i].Definition.Code < doc.Widgets[j].Definition.Code
-	})
-
-	if err := writeManifest(manifestPath, doc); err != nil {
-		return err
-	}
-
-	if cmd.SkipProvider {
-		fmt.Fprintf(os.Stdout, "✓ Added %s to %s (provider entry recorded as %s)\n", cmd.Code, manifestPath, providerEntry)
-		return nil
-	}
-
-	providerPath := cmd.ProviderOut
-	if providerPath == "" {
-		providerPath = filepath.Join("components", "dashboard", "providers", fmt.Sprintf("%s_provider.go", sanitizeFileName(cmd.Code)))
-	}
-	if err := writeProviderStub(providerPath, providerType, cmd.Code, cmd.Overwrite); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stdout, "✓ Added %s to %s and generated %s\n", cmd.Code, manifestPath, providerPath)
-	return nil
+	doc.Widgets = append(doc.Widgets, entry)
 }
 
 func (cmd *scaffoldCmd) validate() error {
@@ -187,23 +192,30 @@ func loadOrInitManifest(path string) (*dashboard.WidgetManifestDocument, error) 
 }
 
 func writeManifest(path string, doc *dashboard.WidgetManifestDocument) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("widgetctl: mkdir %s: %w", filepath.Dir(path), err)
 	}
 	tmpDoc := *doc
 	tmpDoc.Source = ""
 
-	file, err := os.Create(path) //nolint:gosec
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) // #nosec G304 -- scaffold output path is supplied by the CLI user.
 	if err != nil {
 		return fmt.Errorf("widgetctl: create manifest %s: %w", path, err)
 	}
-	defer file.Close()
 
 	encoder := yaml.NewEncoder(file)
 	encoder.SetIndent(2)
-	defer encoder.Close()
-	if err := encoder.Encode(tmpDoc); err != nil {
-		return fmt.Errorf("widgetctl: write manifest: %w", err)
+	encodeErr := encoder.Encode(tmpDoc)
+	encoderCloseErr := encoder.Close()
+	fileCloseErr := file.Close()
+	if encodeErr != nil {
+		return fmt.Errorf("widgetctl: write manifest: %w", encodeErr)
+	}
+	if encoderCloseErr != nil {
+		return fmt.Errorf("widgetctl: close manifest encoder: %w", encoderCloseErr)
+	}
+	if fileCloseErr != nil {
+		return fmt.Errorf("widgetctl: close manifest %s: %w", path, fileCloseErr)
 	}
 	return nil
 }
@@ -212,7 +224,7 @@ func writeProviderStub(path, providerType, code string, overwrite bool) error {
 	if _, err := os.Stat(path); err == nil && !overwrite {
 		return fmt.Errorf("widgetctl: provider stub %s already exists (use --overwrite or --provider-out)", path)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("widgetctl: mkdir provider dir: %w", err)
 	}
 	content := fmt.Sprintf(`package dashboard
@@ -238,7 +250,7 @@ func (p *%s) Fetch(ctx context.Context, meta WidgetContext) (WidgetData, error) 
 }
 `, providerType, code, providerType, providerType, providerType, providerType, providerType)
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("widgetctl: write provider stub: %w", err)
 	}
 	return nil

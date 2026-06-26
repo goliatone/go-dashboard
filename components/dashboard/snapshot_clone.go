@@ -1,13 +1,16 @@
 package dashboard
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"maps"
+)
 
 func cloneAnyValue(value any) any {
 	switch typed := value.(type) {
 	case nil:
 		return nil
 	case WidgetData:
-		return map[string]any(cloneAnyMap(map[string]any(typed)))
+		return cloneAnyMap(map[string]any(typed))
 	case map[string]any:
 		return cloneAnyMap(typed)
 	case []any:
@@ -26,9 +29,7 @@ func cloneAnyValue(value any) any {
 		return append([]string{}, typed...)
 	case map[string]string:
 		out := make(map[string]string, len(typed))
-		for key, item := range typed {
-			out[key] = item
-		}
+		maps.Copy(out, typed)
 		return out
 	case json.RawMessage:
 		return append(json.RawMessage(nil), typed...)
@@ -39,17 +40,6 @@ func cloneAnyValue(value any) any {
 
 func cloneWidgetAreaDefinition(area WidgetAreaDefinition) WidgetAreaDefinition {
 	return area
-}
-
-func cloneWidgetAreaDefinitions(areas []WidgetAreaDefinition) []WidgetAreaDefinition {
-	if len(areas) == 0 {
-		return nil
-	}
-	out := make([]WidgetAreaDefinition, len(areas))
-	for i, area := range areas {
-		out[i] = cloneWidgetAreaDefinition(area)
-	}
-	return out
 }
 
 func cloneWidgetInstances(instances []WidgetInstance) []WidgetInstance {
@@ -93,9 +83,7 @@ func cloneLayoutOverrides(overrides LayoutOverrides) LayoutOverrides {
 	for area, rows := range overrides.AreaRows {
 		out.AreaRows[area] = cloneLayoutRows(rows)
 	}
-	for id, hidden := range overrides.HiddenWidgets {
-		out.HiddenWidgets[id] = hidden
-	}
+	maps.Copy(out.HiddenWidgets, overrides.HiddenWidgets)
 	return out
 }
 
