@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.13.1](https://github.com/goliatone/go-dashboard/compare/v0.13.0...v0.13.1) - (2026-06-26)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Code quality ([9857351](https://github.com/goliatone/go-dashboard/commit/9857351014b377357e57bb6fc44b45c962b184b0))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.13.1 ([c7f8222](https://github.com/goliatone/go-dashboard/commit/c7f82220e3ab6b47eb9b31820adf0d9e894bfed3))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.13.0 ([f677816](https://github.com/goliatone/go-dashboard/commit/f677816409611acf6abfd9e3553a1dcfd7d72a9d))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Setup linters ([7562c6f](https://github.com/goliatone/go-dashboard/commit/7562c6f78dff34063cd80aa4721975567236bb87))  - (goliatone)
+
 # [0.13.0](https://github.com/goliatone/go-dashboard/compare/v0.12.1...v0.13.0) - (2026-06-26)
 
 ## <!-- 13 -->📦 Bumps
