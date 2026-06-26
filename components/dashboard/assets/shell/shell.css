@@ -1,0 +1,155 @@
+:root {
+  --dashboard-shell-bg: var(--dashboard-surface, #f8fafc);
+  --dashboard-shell-fg: var(--dashboard-foreground, #0f172a);
+  --dashboard-shell-rail: var(--dashboard-card, #ffffff);
+  --dashboard-shell-pane: var(--dashboard-panel, #ffffff);
+  --dashboard-shell-border: var(--dashboard-border, #d8dee8);
+  --dashboard-shell-muted: var(--dashboard-muted, #64748b);
+  --dashboard-shell-accent: var(--dashboard-accent, #2563eb);
+  --dashboard-shell-focus-ring: var(--dashboard-focus-ring, #0ea5e9);
+  --dashboard-shell-resizer: var(--dashboard-resizer, #94a3b8);
+  --dashboard-shell-radius: var(--dashboard-radius, 6px);
+  --dashboard-shell-shadow: var(--dashboard-shadow, 0 1px 2px rgba(15, 23, 42, 0.08));
+  --dashboard-shell-toolbar-h: 44px;
+  --dashboard-shell-gap: 0px;
+  --dashboard-shell-rail-collapsed: 0px;
+}
+
+.dashboard-shell {
+  min-height: 100%;
+  background: var(--dashboard-shell-bg);
+  color: var(--dashboard-shell-fg);
+  border: 1px solid var(--dashboard-shell-border);
+  border-radius: var(--dashboard-shell-radius);
+  overflow: hidden;
+}
+
+.dashboard-shell__toolbar {
+  min-height: var(--dashboard-shell-toolbar-h);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dashboard-shell-border);
+  background: var(--dashboard-shell-rail);
+}
+
+.dashboard-shell__icon-button {
+  appearance: none;
+  border: 1px solid var(--dashboard-shell-border);
+  border-radius: 5px;
+  background: var(--dashboard-shell-pane);
+  color: var(--dashboard-shell-fg);
+  min-height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.dashboard-shell__icon-button:hover {
+  border-color: var(--dashboard-shell-accent);
+}
+
+.dashboard-shell__icon-button:focus-visible,
+.dashboard-shell__splitter:focus-visible {
+  outline: 2px solid var(--dashboard-shell-focus-ring);
+  outline-offset: 2px;
+}
+
+.dashboard-shell__icon-button[aria-pressed="true"],
+.dashboard-shell__icon-button[data-shell-collapsed="true"] {
+  border-color: var(--dashboard-shell-accent);
+  color: var(--dashboard-shell-accent);
+}
+
+.dashboard-shell__body {
+  min-height: 480px;
+  display: flex;
+  align-items: stretch;
+  gap: var(--dashboard-shell-gap);
+}
+
+.dashboard-shell__region {
+  min-width: 0;
+  min-height: 0;
+  background: var(--dashboard-shell-pane);
+  color: var(--dashboard-shell-fg);
+}
+
+.dashboard-shell__region--leading,
+.dashboard-shell__region--trailing {
+  flex: 0 0 auto;
+  width: 280px;
+  max-width: 100%;
+  background: var(--dashboard-shell-rail);
+  box-shadow: var(--dashboard-shell-shadow);
+}
+
+.dashboard-shell__region--main {
+  flex: 1 1 auto;
+  min-width: 240px;
+}
+
+.dashboard-shell__region--footer,
+.dashboard-shell__region--utility {
+  flex: 0 0 auto;
+}
+
+.dashboard-shell__region[data-collapsed="true"] {
+  flex-basis: var(--dashboard-shell-rail-collapsed) !important;
+  width: var(--dashboard-shell-rail-collapsed) !important;
+  min-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dashboard-shell__region-text {
+  padding: 16px;
+  color: var(--dashboard-shell-muted);
+}
+
+.dashboard-shell__splitter {
+  flex: 0 0 6px;
+  width: 6px;
+  min-width: 6px;
+  cursor: col-resize;
+  background: color-mix(in srgb, var(--dashboard-shell-resizer) 42%, transparent);
+}
+
+.dashboard-shell__splitter:hover,
+.dashboard-shell[data-shell-resizing] .dashboard-shell__splitter {
+  background: var(--dashboard-shell-accent);
+}
+
+.dashboard-shell[data-shell-focus] .dashboard-shell__region:not([data-shell-focus-active="true"]) {
+  display: none;
+}
+
+.dashboard-shell[data-shell-focus] .dashboard-shell__splitter {
+  display: none;
+}
+
+.dashboard-shell[data-shell-focus] .dashboard-shell__region[data-shell-focus-active="true"] {
+  flex: 1 1 100%;
+  width: auto !important;
+  max-width: none;
+}
+
+@media (max-width: 760px) {
+  .dashboard-shell__body {
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .dashboard-shell__region--leading,
+  .dashboard-shell__region--trailing,
+  .dashboard-shell__region--main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-shell__splitter {
+    display: none;
+  }
+}
