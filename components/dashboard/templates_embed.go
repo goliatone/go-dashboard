@@ -196,7 +196,10 @@ type templatePageRenderer struct {
 }
 
 func (renderer templatePageRenderer) RenderPage(name string, page Page, out ...io.Writer) (string, error) {
-	payload := page.LegacyPayload()
+	payload, err := page.ValidatedLegacyPayload()
+	if err != nil {
+		return "", err
+	}
 	renderer.normalizeWidgetTemplates(payload)
 	return renderer.renderer.Render(name, payload, out...)
 }

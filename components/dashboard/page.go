@@ -9,10 +9,22 @@ type Page struct {
 	Description string          `json:"description,omitempty"`
 	Locale      string          `json:"locale,omitempty"`
 	Areas       []PageArea      `json:"areas,omitempty"`
+	Shell       *Shell          `json:"shell,omitempty"`
 	Assets      *PageAssets     `json:"assets,omitempty"`
 	Theme       *ThemeSelection `json:"theme,omitempty"`
 	State       *PageState      `json:"state,omitempty"`
 	Meta        *PageMeta       `json:"meta,omitempty"`
+}
+
+// MarshalJSON preserves the canonical typed transport while applying page-level
+// validation/defaults before JSON leaves the package.
+func (page Page) MarshalJSON() ([]byte, error) {
+	normalized, err := page.Normalize()
+	if err != nil {
+		return nil, err
+	}
+	type pageJSON Page
+	return json.Marshal(pageJSON(normalized))
 }
 
 // Area returns the first area registered for the provided slot.
@@ -28,6 +40,38 @@ func (page Page) Area(slot string) (PageArea, bool) {
 // LegacyPayload adapts the typed page contract to the historical payload-map
 // shape used by existing transports and renderers during the migration.
 func (page Page) LegacyPayload() map[string]any {
+	normalized, err := page.Normalize()
+	if err == nil {
+		return normalized.legacyPayload()
+	}
+	return page.legacyPayload()
+}
+
+// ValidatedLegacyPayload adapts the typed page contract to the historical
+// payload-map shape and returns validation errors for invalid shell definitions.
+func (page Page) ValidatedLegacyPayload() (map[string]any, error) {
+	normalized, err := page.Normalize()
+	if err != nil {
+		return nil, err
+	}
+	return normalized.legacyPayload(), nil
+}
+
+// Normalize applies page-level defaults and validates opt-in presentation
+// contracts such as Shell.
+func (page Page) Normalize() (Page, error) {
+	if page.Shell == nil {
+		return page, nil
+	}
+	shell, err := page.Shell.Normalize()
+	if err != nil {
+		return Page{}, err
+	}
+	page.Shell = &shell
+	return page, nil
+}
+
+func (page Page) legacyPayload() map[string]any {
 	theme := themePayload(page.Theme)
 	areas := make(map[string]any, len(page.Areas))
 	ordered := make([]map[string]any, 0, len(page.Areas))
@@ -50,7 +94,19 @@ func (page Page) LegacyPayload() map[string]any {
 	if theme != nil {
 		response["theme"] = theme
 	}
+	if shell := page.ShellPayload(); shell != nil {
+		response["shell"] = shell
+	}
 	return response
+}
+
+// ShellPayload returns the legacy-template shell payload, or nil when the page
+// is not rendered as an application shell.
+func (page Page) ShellPayload() map[string]any {
+	if page.Shell == nil {
+		return nil
+	}
+	return page.Shell.legacyPayload()
 }
 
 // PageAssets captures external asset dependencies required by the assembled page.

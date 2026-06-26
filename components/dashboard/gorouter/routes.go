@@ -37,6 +37,7 @@ type RouteConfig struct {
 	Preferences string
 	WebSocket   string
 	Assets      string
+	ShellAssets string
 }
 
 // Register mounts dashboard routes (HTML, JSON, REST, WebSocket) on a go-router router.
@@ -60,6 +61,13 @@ func Register[T any](cfg Config[T]) error {
 	if routes.Assets != "" {
 		cfg.Router.Static(routes.Assets, ".", router.Static{
 			FS:     dashboard.EChartsAssets(),
+			Root:   ".",
+			MaxAge: 86400,
+		})
+	}
+	if routes.ShellAssets != "" {
+		cfg.Router.Static(routes.ShellAssets, ".", router.Static{
+			FS:     dashboard.ShellAssets(),
 			Root:   ".",
 			MaxAge: 86400,
 		})
@@ -262,6 +270,9 @@ func defaultRouteConfig(routes RouteConfig) RouteConfig {
 	}
 	if routes.Assets == "" {
 		routes.Assets = dashboard.DefaultEChartsAssetsPath
+	}
+	if routes.ShellAssets == "" {
+		routes.ShellAssets = dashboard.DefaultShellAssetsPath
 	}
 	return routes
 }

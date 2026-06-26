@@ -357,6 +357,83 @@ func TestControllerPageDecoratorAppliesBeforeHTMLAndJSONAdapters(t *testing.T) {
 	}
 }
 
+func TestControllerPageNormalizesDecoratedShell(t *testing.T) {
+	service := &stubLayoutResolver{layout: Layout{Areas: map[string][]WidgetInstance{}}}
+	renderer := &stubRenderer{}
+	controller := NewController(ControllerOptions{
+		Service:  service,
+		Renderer: renderer,
+		PageDecorator: func(_ context.Context, _ ViewerContext, page Page) (Page, error) {
+			page.Shell = &Shell{
+				SurfaceID: "workbench",
+				Storage:   ShellStorage{ModuleID: "settings"},
+				Regions: []ShellRegion{{
+					ID:          "main",
+					Role:        ShellRegionRoleMain,
+					Resizable:   true,
+					Sizing:      ShellPaneSizing{Min: 240, Max: 320, Default: 999},
+					FocusTarget: true,
+				}},
+			}
+			return page, nil
+		},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	if page.Shell == nil || page.Shell.Storage.Namespace != DefaultShellStateNamespace {
+		t.Fatalf("expected normalized shell storage on typed page, got %+v", page.Shell)
+	}
+	if page.Shell.Regions[0].Placement != ShellRegionPlacementMain || page.Shell.Regions[0].Sizing.Default != 320 {
+		t.Fatalf("expected normalized shell region on typed page, got %+v", page.Shell.Regions[0])
+	}
+
+	payload, err := controller.LayoutPayload(context.Background(), ViewerContext{UserID: "user-1"})
+	if err != nil {
+		t.Fatalf("LayoutPayload returned error: %v", err)
+	}
+	shellPayload := payload["shell"].(map[string]any)
+	storage := shellPayload["storage"].(map[string]any)
+	if storage["key"] != "go-dashboard:shell:v1:workbench:module:settings:viewer:anonymous" {
+		t.Fatalf("expected normalized storage key in payload, got %+v", storage)
+	}
+
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{UserID: "user-1"}, &buf); err != nil {
+		t.Fatalf("RenderTemplate returned error: %v", err)
+	}
+	if !reflect.DeepEqual(page, renderer.lastPage) {
+		t.Fatalf("expected renderer to receive normalized typed page")
+	}
+}
+
+func TestControllerRejectsInvalidDecoratedShell(t *testing.T) {
+	controller := NewController(ControllerOptions{
+		Service:  &stubLayoutResolver{layout: Layout{Areas: map[string][]WidgetInstance{}}},
+		Renderer: &stubRenderer{},
+		PageDecorator: func(_ context.Context, _ ViewerContext, page Page) (Page, error) {
+			page.Shell = &Shell{
+				SurfaceID: "bad surface",
+				Regions:   []ShellRegion{{ID: "main", Role: ShellRegionRoleMain}},
+			}
+			return page, nil
+		},
+	})
+
+	if _, err := controller.Page(context.Background(), ViewerContext{}); err == nil {
+		t.Fatalf("expected Page to reject invalid shell")
+	}
+	if _, err := controller.LayoutPayload(context.Background(), ViewerContext{}); err == nil {
+		t.Fatalf("expected LayoutPayload to reject invalid shell")
+	}
+	var buf bytes.Buffer
+	if err := controller.RenderTemplate(context.Background(), ViewerContext{}, &buf); err == nil {
+		t.Fatalf("expected RenderTemplate to reject invalid shell")
+	}
+}
+
 func TestControllerLegacyPayloadAdapterDerivesFromTypedPage(t *testing.T) {
 	service := &stubLayoutResolver{
 		layout: Layout{

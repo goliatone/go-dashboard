@@ -158,7 +158,10 @@ func (c *Controller) payloadForViewer(ctx context.Context, viewer ViewerContext)
 	if err != nil {
 		return nil, err
 	}
-	payload := page.LegacyPayload()
+	payload, err := page.ValidatedLegacyPayload()
+	if err != nil {
+		return nil, err
+	}
 	if c.payloadDecorator != nil {
 		decorated, err := c.payloadDecorator(ctx, viewer, payload)
 		if err != nil {
@@ -187,7 +190,11 @@ func (c *Controller) Page(ctx context.Context, viewer ViewerContext) (Page, erro
 	if err != nil {
 		return Page{}, err
 	}
-	return c.decoratePage(ctx, viewer, page)
+	decorated, err := c.decoratePage(ctx, viewer, page)
+	if err != nil {
+		return Page{}, err
+	}
+	return decorated.Normalize()
 }
 
 // RenderPage resolves and renders the typed dashboard page directly.

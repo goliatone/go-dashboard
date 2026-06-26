@@ -101,3 +101,72 @@ svc := dashboard.NewService(dashboard.Options{
     },
 })
 ```
+
+## Application Shell
+
+`dashboard.Shell` is an opt-in application/workbench shell for modules that need
+side rails, splitters, collapsible regions, and focus mode. `go-dashboard` owns
+the shell mechanics; consuming modules own the region content and behavior.
+Existing widget dashboards keep using `Page.Areas` and are unchanged unless
+`Page.Shell` is set.
+
+Module content is supplied through `ShellRegion.Content`. Use `Text` for escaped
+plain text, or `HTML` when the caller has already produced trusted markup. Shell
+assets can be added with:
+
+```go
+assets := dashboard.PageAssets{}
+assets.AddShellAssets("")
+page.Assets = &assets
+```
+
+Default asset URLs are:
+
+- CSS: `/dashboard/assets/shell/shell.css`
+- JS: `/dashboard/assets/shell/shell.js`
+
+The go-router adapter serves those files separately from ECharts assets. Override
+`gorouter.RouteConfig.ShellAssets` when an app needs a different local prefix.
+
+The declarative runtime contract is:
+
+- Root: `data-dashboard-shell`, `data-dashboard-shell-surface`,
+  `data-dashboard-shell-version`
+- Region: `data-shell-region`, `data-shell-role`, `data-shell-placement`
+- Rail controls: `data-shell-toggle`, `data-shell-resize`
+- Focus controls: `data-shell-focus-toggle`, `data-shell-focus-exit`
+- Optional `ShellAction` controls render with `data-shell-action` and map known
+  kinds to the same toggle/focus attributes: `toggle-region`, `focus`,
+  `exit-focus`, or plain `button`.
+
+Resize handles render `role="separator"` with vertical orientation and
+`aria-valuemin/max/now`. The runtime also supports keyboard resizing with arrow
+keys plus Home/End.
+
+Theme tokens are ordinary `ThemeSelection` CSS variables. The shell CSS reads
+tokens such as `--dashboard-shell-bg`, `--dashboard-shell-rail`,
+`--dashboard-shell-border`, `--dashboard-shell-muted`,
+`--dashboard-shell-accent`, `--dashboard-shell-focus-ring`,
+`--dashboard-shell-resizer`, `--dashboard-shell-radius`, and
+`--dashboard-shell-shadow`, each with sensible defaults.
+
+Browser state is scoped as:
+
+```text
+go-dashboard:shell:v<version>:<surface>[:module:<module>]:viewer:<viewer|anonymous>
+```
+
+When viewer identity is not available client-side, the runtime intentionally uses
+`viewer:anonymous`. Server-backed shell preferences remain deferred.
+
+Validation commands:
+
+```sh
+go test ./...
+node --test components/dashboard/assets/shell/shell.test.mjs
+```
+
+The follow-up `go-admin` adoption spec can migrate local pane controllers once
+Content Types and Block Library are represented by the generic `navigation`,
+`main`, `palette`, and `inspector` region roles; their collapse, resize, focus,
+storage-restore, and keyboard resize behavior should remain intact.

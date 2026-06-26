@@ -8,10 +8,12 @@ import (
 func TestThemeSelectionCSSVariablesSanitizeUnsafeTokens(t *testing.T) {
 	selection := &ThemeSelection{
 		Tokens: map[string]string{
-			"dashboard-accent": "#22d3ee",
-			"bad-name;":        "#fff",
-			"dashboard-bg":     `url("javascript:alert(1)")`,
-			"dashboard-gap":    "1.5rem",
+			"dashboard-accent":       "#22d3ee",
+			"dashboard-shell-bg":     "#0f172a",
+			"dashboard-shell-radius": "6px",
+			"bad-name;":              "#fff",
+			"dashboard-bg":           `url("javascript:alert(1)")`,
+			"dashboard-gap":          "1.5rem",
 		},
 	}
 
@@ -21,6 +23,9 @@ func TestThemeSelectionCSSVariablesSanitizeUnsafeTokens(t *testing.T) {
 	}
 	if vars["--dashboard-gap"] != "1.5rem" {
 		t.Fatalf("expected safe numeric token preserved, got %+v", vars)
+	}
+	if vars["--dashboard-shell-bg"] != "#0f172a" || vars["--dashboard-shell-radius"] != "6px" {
+		t.Fatalf("expected shell tokens preserved, got %+v", vars)
 	}
 	if _, ok := vars["--bad-name;"]; ok {
 		t.Fatalf("expected unsafe variable name rejected, got %+v", vars)

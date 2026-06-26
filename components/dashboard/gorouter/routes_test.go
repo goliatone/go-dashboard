@@ -116,6 +116,17 @@ func TestAssetsRouteServesEmbeddedFiles(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); ct == "" {
 		t.Fatalf("expected content type for asset response")
 	}
+
+	shellResp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/dashboard/assets/shell/shell.css", nil))
+	if err != nil {
+		t.Fatalf("shell asset request failed: %v", err)
+	}
+	if shellResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected embedded shell assets to be served, got %d", shellResp.StatusCode)
+	}
+	if shellResp.Header.Get("Content-Type") == "" {
+		t.Fatalf("expected content type for shell asset response")
+	}
 }
 
 func TestDefaultViewerResolverUsesAcceptLanguage(t *testing.T) {
@@ -201,6 +212,7 @@ func TestRegisterWithCustomRoutes(t *testing.T) {
 			Refresh:     "/widgets/refresh",
 			Preferences: "/prefs",
 			WebSocket:   "/ws/live",
+			ShellAssets: "/assets/shell/",
 		},
 	}
 	if err := Register(cfg); err != nil {
@@ -237,6 +249,14 @@ func TestRegisterWithCustomRoutes(t *testing.T) {
 	}
 	if legacyResp.StatusCode == http.StatusOK {
 		t.Fatalf("expected default route to be unmapped when custom routes used")
+	}
+
+	shellResp, err := fiberAdapter.WrappedRouter().Test(httptest.NewRequest(http.MethodGet, "/assets/shell/shell.js", nil))
+	if err != nil {
+		t.Fatalf("custom shell asset request failed: %v", err)
+	}
+	if shellResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected custom shell assets route to return 200, got %d", shellResp.StatusCode)
 	}
 }
 

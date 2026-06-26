@@ -27,7 +27,11 @@ type legacyRendererAdapter struct {
 }
 
 func (adapter legacyRendererAdapter) RenderPage(name string, page Page, out ...io.Writer) (string, error) {
-	return adapter.renderer.Render(name, page.LegacyPayload(), out...)
+	payload, err := page.ValidatedLegacyPayload()
+	if err != nil {
+		return "", err
+	}
+	return adapter.renderer.Render(name, payload, out...)
 }
 
 // AdaptLegacyRenderer wraps a legacy renderer so the controller can keep using
