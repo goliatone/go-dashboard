@@ -7,7 +7,7 @@ require (
 	github.com/ettle/strcase v0.2.0
 	github.com/go-echarts/go-echarts/v2 v2.5.0
 	github.com/gofiber/fiber/v2 v2.52.12
-	github.com/goliatone/go-command v0.19.0
+	github.com/goliatone/go-command v0.22.0
 	github.com/goliatone/go-router v0.59.0
 	github.com/goliatone/go-template v0.3.1
 	github.com/goliatone/go-users v0.24.1
