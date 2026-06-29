@@ -8,3 +8,5 @@ coverage.out
 
 # macOS metadata
 .DS_Store
+docs/adr/*
+docs/feat/*
