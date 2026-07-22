@@ -3,6 +3,7 @@ package gorouter
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -15,15 +16,28 @@ import (
 // ViewerResolver converts a router.Context into a dashboard.ViewerContext.
 type ViewerResolver func(router.Context) dashboard.ViewerContext
 
+// AssetRegistrationMode controls who mounts dashboard static asset routes.
+type AssetRegistrationMode uint8
+
+const (
+	// AssetRegistrationModeRouter keeps the standalone behavior: Register mounts
+	// the embedded ECharts and shell assets on Config.Router.
+	AssetRegistrationModeRouter AssetRegistrationMode = iota
+	// AssetRegistrationModeExternal leaves asset registration to the host while
+	// preserving the configured asset URLs in the dashboard page contract.
+	AssetRegistrationModeExternal
+)
+
 // Config wires go-router with go-dashboard controllers, APIs, and hooks.
 type Config[T any] struct {
-	Router         router.Router[T]
-	Controller     *dashboard.Controller
-	API            dashboard.Executor
-	Broadcast      *dashboard.BroadcastHook
-	ViewerResolver ViewerResolver
-	BasePath       string
-	Routes         RouteConfig
+	Router            router.Router[T]
+	Controller        *dashboard.Controller
+	API               dashboard.Executor
+	Broadcast         *dashboard.BroadcastHook
+	ViewerResolver    ViewerResolver
+	BasePath          string
+	Routes            RouteConfig
+	AssetRegistration AssetRegistrationMode
 }
 
 // RouteConfig customizes the relative paths used for dashboard endpoints.
@@ -48,6 +62,9 @@ func Register[T any](cfg Config[T]) error {
 	if cfg.Controller == nil {
 		return errors.New("gorouter: controller is required")
 	}
+	if cfg.AssetRegistration != AssetRegistrationModeRouter && cfg.AssetRegistration != AssetRegistrationModeExternal {
+		return fmt.Errorf("gorouter: unsupported asset registration mode %d", cfg.AssetRegistration)
+	}
 	routes := cfg.routes()
 	base := cfg.BasePath
 	if base == "" {
@@ -58,19 +75,21 @@ func Register[T any](cfg Config[T]) error {
 		viewerResolver = defaultViewerResolver
 	}
 
-	if routes.Assets != "" {
-		cfg.Router.Static(routes.Assets, ".", router.Static{
-			FS:     dashboard.EChartsAssets(),
-			Root:   ".",
-			MaxAge: 86400,
-		})
-	}
-	if routes.ShellAssets != "" {
-		cfg.Router.Static(routes.ShellAssets, ".", router.Static{
-			FS:     dashboard.ShellAssets(),
-			Root:   ".",
-			MaxAge: 86400,
-		})
+	if cfg.AssetRegistration == AssetRegistrationModeRouter {
+		if routes.Assets != "" {
+			cfg.Router.Static(routes.Assets, ".", router.Static{
+				FS:     dashboard.EChartsAssets(),
+				Root:   ".",
+				MaxAge: 86400,
+			})
+		}
+		if routes.ShellAssets != "" {
+			cfg.Router.Static(routes.ShellAssets, ".", router.Static{
+				FS:     dashboard.ShellAssets(),
+				Root:   ".",
+				MaxAge: 86400,
+			})
+		}
 	}
 
 	group := cfg.Router.Group(base)
