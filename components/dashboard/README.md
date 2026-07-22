@@ -127,6 +127,11 @@ Default asset URLs are:
 
 The go-router adapter serves those files separately from ECharts assets. Override
 `gorouter.RouteConfig.ShellAssets` when an app needs a different local prefix.
+By default, `gorouter.Register` mounts both embedded asset families on
+`Config.Router`. Set `Config.AssetRouter` when dashboard endpoints use a grouped
+router but assets must remain on canonical root paths. Hosts that already mount
+the same assets on a dedicated static surface should set
+`AssetRegistrationModeExternal` instead.
 
 The declarative runtime contract is:
 

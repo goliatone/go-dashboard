@@ -23,14 +23,19 @@ const (
 	// AssetRegistrationModeRouter keeps the standalone behavior: Register mounts
 	// the embedded ECharts and shell assets on Config.Router.
 	AssetRegistrationModeRouter AssetRegistrationMode = iota
-	// AssetRegistrationModeExternal leaves asset registration to the host while
-	// preserving the configured asset URLs in the dashboard page contract.
+	// AssetRegistrationModeExternal leaves asset registration to the host and
+	// registers only dashboard endpoints.
 	AssetRegistrationModeExternal
 )
 
 // Config wires go-router with go-dashboard controllers, APIs, and hooks.
 type Config[T any] struct {
-	Router            router.Router[T]
+	// Router mounts dashboard HTML, API, and WebSocket endpoints.
+	Router router.Router[T]
+	// AssetRouter optionally mounts embedded assets outside Router's route group.
+	// It defaults to Router when omitted.
+	AssetRouter router.Router[T]
+
 	Controller        *dashboard.Controller
 	API               dashboard.Executor
 	Broadcast         *dashboard.BroadcastHook
@@ -76,15 +81,19 @@ func Register[T any](cfg Config[T]) error {
 	}
 
 	if cfg.AssetRegistration == AssetRegistrationModeRouter {
+		assetRouter := cfg.AssetRouter
+		if assetRouter == nil {
+			assetRouter = cfg.Router
+		}
 		if routes.Assets != "" {
-			cfg.Router.Static(routes.Assets, ".", router.Static{
+			assetRouter.Static(routes.Assets, ".", router.Static{
 				FS:     dashboard.EChartsAssets(),
 				Root:   ".",
 				MaxAge: 86400,
 			})
 		}
 		if routes.ShellAssets != "" {
-			cfg.Router.Static(routes.ShellAssets, ".", router.Static{
+			assetRouter.Static(routes.ShellAssets, ".", router.Static{
 				FS:     dashboard.ShellAssets(),
 				Root:   ".",
 				MaxAge: 86400,
