@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
@@ -126,6 +127,69 @@ func TestAssetsRouteServesEmbeddedFiles(t *testing.T) {
 	}
 	if shellResp.Header.Get("Content-Type") == "" {
 		t.Fatalf("expected content type for shell asset response")
+	}
+}
+
+func TestRegisterAllowsExternallyManagedAssets(t *testing.T) {
+	server := router.NewFiberAdapter()
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service: &stubLayoutResolver{layout: dashboard.Layout{
+			Areas: map[string][]dashboard.WidgetInstance{"admin.dashboard.main": nil},
+		}},
+		Renderer: &stubRenderer{},
+	})
+
+	if err := Register(Config[*fiber.App]{
+		Router:            server.Router(),
+		Controller:        controller,
+		API:               noopExecutor{},
+		AssetRegistration: AssetRegistrationModeExternal,
+	}); err != nil {
+		t.Fatalf("register returned error: %v", err)
+	}
+
+	fiberAdapter, ok := server.(interface{ WrappedRouter() *fiber.App })
+	if !ok {
+		t.Fatalf("adapter does not expose wrapped router")
+	}
+	app := fiberAdapter.WrappedRouter()
+
+	dashboardResp, err := app.Test(httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil))
+	if err != nil {
+		t.Fatalf("dashboard request failed: %v", err)
+	}
+	if dashboardResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected dashboard route to remain registered, got %d", dashboardResp.StatusCode)
+	}
+
+	for _, assetPath := range []string{
+		"/dashboard/assets/echarts/echarts.min.js",
+		"/dashboard/assets/shell/shell.css",
+	} {
+		resp, err := app.Test(httptest.NewRequest(http.MethodGet, assetPath, nil))
+		if err != nil {
+			t.Fatalf("asset request %s failed: %v", assetPath, err)
+		}
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected externally managed asset %s to remain unmounted, got %d", assetPath, resp.StatusCode)
+		}
+	}
+}
+
+func TestRegisterRejectsUnknownAssetRegistrationMode(t *testing.T) {
+	server := router.NewFiberAdapter()
+	controller := dashboard.NewController(dashboard.ControllerOptions{
+		Service:  &stubLayoutResolver{layout: dashboard.Layout{Areas: map[string][]dashboard.WidgetInstance{}}},
+		Renderer: &stubRenderer{},
+	})
+
+	err := Register(Config[*fiber.App]{
+		Router:            server.Router(),
+		Controller:        controller,
+		AssetRegistration: AssetRegistrationMode(255),
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported asset registration mode") {
+		t.Fatalf("expected unsupported asset registration error, got %v", err)
 	}
 }
 
