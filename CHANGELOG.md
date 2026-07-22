@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.14.0](https://github.com/goliatone/go-dashboard/compare/v0.13.1...v0.14.0) - (2026-07-22)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.14.0 ([a154113](https://github.com/goliatone/go-dashboard/commit/a154113421eee5bbf8116b7019bacd02100ef060))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Router owned asset registration ([b0e0d05](https://github.com/goliatone/go-dashboard/commit/b0e0d056dbc3d5631efd9a8cbc27c75586e20a31))  - (goliatone)
+- Asset registration ([2147e2b](https://github.com/goliatone/go-dashboard/commit/2147e2bb49f0df0715b0a1d980f03a6ae2dbe94c))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.13.1 ([c32e721](https://github.com/goliatone/go-dashboard/commit/c32e721ddffddade480c54255510a59f81960410))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update test ([249c3cb](https://github.com/goliatone/go-dashboard/commit/249c3cbddcdcb80be82f10c484d74a1ea7bba14a))  - (goliatone)
+- Update gitignore ([9981e17](https://github.com/goliatone/go-dashboard/commit/9981e178a3593e5f203bb48b3aac8998ac72f7e7))  - (goliatone)
+
 # [0.13.1](https://github.com/goliatone/go-dashboard/compare/v0.13.0...v0.13.1) - (2026-06-26)
 
 ## <!-- 1 -->🐛 Bug Fixes
