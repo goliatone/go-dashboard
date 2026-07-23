@@ -7,8 +7,8 @@ require (
 	github.com/ettle/strcase v0.2.0
 	github.com/go-echarts/go-echarts/v2 v2.5.0
 	github.com/gofiber/fiber/v2 v2.52.12
-	github.com/goliatone/go-command v0.22.0
-	github.com/goliatone/go-router v0.59.0
+	github.com/goliatone/go-command v0.24.1
+	github.com/goliatone/go-router v0.61.1
 	github.com/goliatone/go-template v0.3.1
 	github.com/goliatone/go-users v0.24.1
 	github.com/google/uuid v1.6.0
@@ -33,8 +33,9 @@ require (
 	github.com/gofiber/template/django/v3 v3.1.14 // indirect
 	github.com/gofiber/utils v1.2.0 // indirect
 	github.com/goliatone/go-composite-fs v0.3.0 // indirect
-	github.com/goliatone/go-errors v0.10.0 // indirect
+	github.com/goliatone/go-errors v0.12.0 // indirect
 	github.com/goliatone/go-i18n v0.5.0 // indirect
+	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
@@ -46,12 +47,13 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20250924091648-bce9a52d7761 // indirect
+	github.com/showa-93/go-mask v0.6.2 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.68.0 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/text v0.39.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
