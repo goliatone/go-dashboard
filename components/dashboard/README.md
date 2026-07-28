@@ -125,30 +125,40 @@ Portable fallbacks include the matching `color.*`, `font.*`, `space.*`,
 keys and pre-prefixed CSS variables remain transport-compatible. Canonical
 semantic chrome activates only when a valid shell/widget/state consumer token
 is present, so omitted, unrelated, chart-only, and legacy tokens do not restyle
-dashboard chrome.
+dashboard chrome. The stock template emits each semantic declaration
+independently: a focus-only theme, for example, adds the focus rule without
+resetting card, metric, header, or legacy host styles.
 
 Use:
 
 - `ThemeSelection.SemanticProjection()` for variables plus
   resolved/invalid/supported/unsupported diagnostics.
-- `ThemeSelection.DashboardConsumerDiagnostics()` for the exact component or
-  portable fallback consumed by the generic template.
+- `ThemeSelection.SemanticDashboardPlan(usage)` for render-aware stock-template
+  styles and consumed/unused diagnostics. The typed page adapter derives this
+  inventory automatically for widget dashboards and application shells.
+- `ThemeSelection.DashboardConsumerDiagnostics()` only when no page inventory
+  is available; it conservatively reports supported tokens as unused rather
+  than claiming a renderer consumed them.
 - `ThemeSelection.SemanticChartPalette()` for the typed eight-series
-  ECharts palette and chart presentation diagnostics.
+  ECharts palette and generic presentation diagnostics.
 
 Widget frames accept `WidgetPresentationState` values `ready`, `loading`,
 `empty`, and `error`. Templates emit `data-dashboard-state`; loading also emits
 `aria-busy="true"`. The empty state remains represented by
-`.dashboard-area--empty`.
+`.dashboard-area--empty`. Controller adaptation rejects present metadata state
+values with the wrong type or an unknown name instead of silently rendering
+them as ready.
 
 ECharts keeps the selected named/custom `ChartTheme`. When semantic series
 tokens are present, validated colors are applied to typed series/data items.
 Missing positions retain their current positional default until the first
 valid semantic color, then rotate through previously supplied semantic colors.
 Axis, grid, tooltip surface, and tooltip text use typed go-echarts options and
-its configuration-visitor extension point. The render cache includes the
-resolved named theme and applied semantic palette, so variants cannot reuse
-stale chart markup.
+its configuration-visitor extension point. Concrete provider diagnostics and
+cache identity include only applied presentation: axis and grid are consumed
+for bar, line, and scatter charts, while pie and gauge report them unused. The
+render cache includes the resolved named theme and applied semantic palette, so
+variants cannot reuse stale chart markup.
 
 ## Application Shell
 

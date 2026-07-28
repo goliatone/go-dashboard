@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -83,7 +84,7 @@ func (c *HTTPClient) FetchAlerts(ctx context.Context, query dashboard.AlertTrend
 	return resp.toReport()
 }
 
-func (c *HTTPClient) do(ctx context.Context, method, path string, payload any, target any) error {
+func (c *HTTPClient) do(ctx context.Context, method, path string, payload any, target any) (resultErr error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("analytics: encode payload: %w", err)
@@ -100,11 +101,17 @@ func (c *HTTPClient) do(ctx context.Context, method, path string, payload any, t
 	if err != nil {
 		return fmt.Errorf("analytics: http request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil && resultErr == nil {
+			resultErr = fmt.Errorf("analytics: close response body: %w", closeErr)
+		}
+	}()
 	if resp.StatusCode >= 300 {
-		var buf bytes.Buffer
-		_, _ = buf.ReadFrom(resp.Body)
-		return fmt.Errorf("analytics: remote error %d: %s", resp.StatusCode, buf.String())
+		responseBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("analytics: read error response: %w", readErr)
+		}
+		return fmt.Errorf("analytics: remote error %d: %s", resp.StatusCode, string(responseBody))
 	}
 	if target == nil {
 		return nil
