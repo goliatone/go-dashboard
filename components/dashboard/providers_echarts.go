@@ -27,20 +27,23 @@ var (
 var sharedChartCache = NewChartCache(5 * time.Minute)
 
 type chartRenderContext struct {
-	Viewer ViewerContext
-	Theme  string
+	Viewer  ViewerContext
+	Theme   string
+	Palette SemanticChartPalette
 }
 
 type echartsWidgetView struct {
-	ChartHTML       string   `json:"chart_html"`
-	ChartType       string   `json:"chart_type"`
-	Title           string   `json:"title"`
-	Subtitle        string   `json:"subtitle"`
-	Theme           string   `json:"theme"`
-	JSAssets        []string `json:"js_assets,omitempty"`
-	CSSAssets       []string `json:"css_assets,omitempty"`
-	Dynamic         bool     `json:"dynamic,omitempty"`
-	RefreshEndpoint string   `json:"refresh_endpoint,omitempty"`
+	ChartHTML        string            `json:"chart_html"`
+	ChartType        string            `json:"chart_type"`
+	Title            string            `json:"title"`
+	Subtitle         string            `json:"subtitle"`
+	Theme            string            `json:"theme"`
+	SemanticPalette  []string          `json:"semantic_palette,omitempty"`
+	ThemeDiagnostics []TokenDiagnostic `json:"theme_diagnostics,omitempty"`
+	JSAssets         []string          `json:"js_assets,omitempty"`
+	CSSAssets        []string          `json:"css_assets,omitempty"`
+	Dynamic          bool              `json:"dynamic,omitempty"`
+	RefreshEndpoint  string            `json:"refresh_endpoint,omitempty"`
 }
 
 type chartRenderPayload struct {
@@ -165,8 +168,9 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 	sanitizeSeries(series)
 
 	renderCtx := chartRenderContext{
-		Viewer: meta.Viewer,
-		Theme:  p.resolveTheme(meta.Viewer, meta.Theme),
+		Viewer:  meta.Viewer,
+		Theme:   p.resolveTheme(meta.Viewer, meta.Theme),
+		Palette: meta.Theme.SemanticChartPalette(),
 	}
 	if override := strings.TrimSpace(stringValue(cfg["theme"], "")); override != "" {
 		renderCtx.Theme = override
@@ -201,7 +205,15 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 	)
 
 	if p.cache != nil {
-		key := fmt.Sprintf("%s:%s:%s:%s", meta.Instance.DefinitionID, meta.Instance.ID, p.chartType, configHash(cfg))
+		key := fmt.Sprintf(
+			"%s:%s:%s:%s:%s:%s",
+			meta.Instance.DefinitionID,
+			meta.Instance.ID,
+			p.chartType,
+			configHash(cfg),
+			renderCtx.Theme,
+			renderCtx.Palette.cacheKey(),
+		)
 		cached, err = p.cache.GetOrRender(key, renderFn)
 	} else {
 		cached, err = renderFn()
@@ -224,6 +236,12 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		Theme:     renderCtx.Theme,
 		JSAssets:  append([]string{}, payload.JS...),
 		CSSAssets: append([]string{}, payload.CSS...),
+	}
+	if renderCtx.Palette.Active() {
+		view.SemanticPalette = renderCtx.Palette.SeriesColors()
+	}
+	if renderCtx.Palette.Relevant {
+		view.ThemeDiagnostics = append([]TokenDiagnostic(nil), renderCtx.Palette.Diagnostics...)
 	}
 
 	if dynamic := boolValue(cfg["dynamic"]); dynamic {
@@ -272,44 +290,49 @@ func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series 
 	case "bar":
 		bar := charts.NewBar()
 		bar.SetGlobalOptions(options...)
+		applySemanticChartVisitor(bar, ctx.Palette)
 		bar.SetXAxis(xAxis)
-		for _, s := range series {
-			bar.AddSeries(s.Name, toBarData(s.Points))
+		for index, s := range series {
+			bar.AddSeries(s.Name, toBarData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
 		return renderChart(bar)
 	case "line":
 		line := charts.NewLine()
 		line.SetGlobalOptions(options...)
+		applySemanticChartVisitor(line, ctx.Palette)
 		line.SetXAxis(xAxis)
-		for _, s := range series {
-			line.AddSeries(s.Name, toLineData(s.Points))
+		for index, s := range series {
+			line.AddSeries(s.Name, toLineData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
 		line.SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: opts.Bool(true)}))
 		return renderChart(line)
 	case "pie":
 		pie := charts.NewPie()
 		pie.SetGlobalOptions(options...)
+		applySemanticChartVisitor(pie, ctx.Palette)
 		for _, s := range series {
-			pie.AddSeries(s.Name, toPieData(s.Points))
+			pie.AddSeries(s.Name, toPieData(s.Points, ctx.Palette))
 		}
 		return renderChart(pie)
 	case "scatter":
 		scatter := charts.NewScatter()
 		scatter.SetGlobalOptions(options...)
-		for _, s := range series {
-			scatter.AddSeries(s.Name, toScatterData(s.Points))
+		applySemanticChartVisitor(scatter, ctx.Palette)
+		for index, s := range series {
+			scatter.AddSeries(s.Name, toScatterData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
 		return renderChart(scatter)
 	case "gauge":
 		gauge := charts.NewGauge()
 		gauge.SetGlobalOptions(options...)
-		for _, s := range series {
+		applySemanticChartVisitor(gauge, ctx.Palette)
+		for index, s := range series {
 			if len(s.Points) == 0 {
 				continue
 			}
 			gauge.AddSeries(s.Name, []opts.GaugeData{
 				{Name: s.Name, Value: s.Points[0].Value},
-			})
+			}, semanticSeriesOptions(ctx.Palette, index)...)
 		}
 		return renderChart(gauge)
 	default:
@@ -482,16 +505,81 @@ func (p *EChartsProvider) globalChartOptions(title, subtitle string, ctx chartRe
 	if p.assetsHost != "" {
 		initOpts.AssetsHost = p.assetsHost
 	}
+	tooltip := opts.Tooltip{
+		Show:            opts.Bool(true),
+		BackgroundColor: ctx.Palette.TooltipSurface,
+	}
 	optsList := []charts.GlobalOpts{
 		charts.WithInitializationOpts(initOpts),
 		charts.WithLegendOpts(opts.Legend{Show: opts.Bool(true)}),
-		charts.WithTooltipOpts(opts.Tooltip{Show: opts.Bool(true)}),
+		charts.WithTooltipOpts(tooltip),
 		charts.WithToolboxOpts(opts.Toolbox{Show: opts.Bool(true)}),
+	}
+	if p.chartType == "bar" || p.chartType == "line" || p.chartType == "scatter" {
+		xAxis, yAxis := semanticChartAxes(ctx.Palette)
+		if xAxis != nil {
+			optsList = append(optsList, charts.WithXAxisOpts(*xAxis), charts.WithYAxisOpts(*yAxis))
+		}
 	}
 	if title != "" || subtitle != "" {
 		optsList = append([]charts.GlobalOpts{charts.WithTitleOpts(opts.Title{Title: title, Subtitle: subtitle})}, optsList...)
 	}
 	return optsList
+}
+
+func semanticSeriesOptions(palette SemanticChartPalette, index int) []charts.SeriesOpts {
+	colors := palette.SeriesColors()
+	if len(colors) == 0 {
+		return nil
+	}
+	return []charts.SeriesOpts{
+		charts.WithItemStyleOpts(opts.ItemStyle{Color: colors[index%len(colors)]}),
+	}
+}
+
+type chartVisitorTarget interface {
+	Accept(charts.ConfigurationVisitor)
+}
+
+type semanticChartVisitor struct {
+	charts.BaseConfigurationVisitor
+	tooltipText string
+}
+
+func (visitor semanticChartVisitor) VisitTooltipOpt(tooltip opts.Tooltip) interface{} {
+	return struct {
+		opts.Tooltip
+		TextStyle map[string]string `json:"textStyle,omitempty"`
+	}{
+		Tooltip:   tooltip,
+		TextStyle: map[string]string{"color": visitor.tooltipText},
+	}
+}
+
+func applySemanticChartVisitor(target chartVisitorTarget, palette SemanticChartPalette) {
+	if target == nil || palette.TooltipText == "" {
+		return
+	}
+	target.Accept(semanticChartVisitor{tooltipText: palette.TooltipText})
+}
+
+func semanticChartAxes(palette SemanticChartPalette) (*opts.XAxis, *opts.YAxis) {
+	if palette.Axis == "" && palette.Grid == "" {
+		return nil, nil
+	}
+	xAxis := &opts.XAxis{}
+	yAxis := &opts.YAxis{}
+	if palette.Axis != "" {
+		xAxis.AxisLabel = &opts.AxisLabel{Color: palette.Axis}
+		yAxis.AxisLabel = &opts.AxisLabel{Color: palette.Axis}
+		xAxis.AxisLine = &opts.AxisLine{LineStyle: &opts.LineStyle{Color: palette.Axis}}
+		yAxis.AxisLine = &opts.AxisLine{LineStyle: &opts.LineStyle{Color: palette.Axis}}
+	}
+	if palette.Grid != "" {
+		xAxis.SplitLine = &opts.SplitLine{LineStyle: &opts.LineStyle{Color: palette.Grid}}
+		yAxis.SplitLine = &opts.SplitLine{LineStyle: &opts.LineStyle{Color: palette.Grid}}
+	}
+	return xAxis, yAxis
 }
 
 func (p *EChartsProvider) resolveTheme(viewer ViewerContext, selection *ThemeSelection) string {
@@ -557,8 +645,9 @@ func toLineData(points []ChartPoint) []opts.LineData {
 	return data
 }
 
-func toPieData(points []ChartPoint) []opts.PieData {
+func toPieData(points []ChartPoint, palette SemanticChartPalette) []opts.PieData {
 	data := make([]opts.PieData, len(points))
+	colors := palette.SeriesColors()
 	for i, point := range points {
 		name := point.Label
 		if name == "" {
@@ -567,6 +656,9 @@ func toPieData(points []ChartPoint) []opts.PieData {
 		data[i] = opts.PieData{
 			Name:  name,
 			Value: point.Value,
+		}
+		if len(colors) > 0 {
+			data[i].ItemStyle = &opts.ItemStyle{Color: colors[i%len(colors)]}
 		}
 	}
 	return data

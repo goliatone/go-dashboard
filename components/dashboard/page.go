@@ -1,6 +1,19 @@
 package dashboard
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// WidgetPresentationState is the renderer-owned visual state for one widget.
+type WidgetPresentationState string
+
+const (
+	WidgetStateReady   WidgetPresentationState = "ready"
+	WidgetStateLoading WidgetPresentationState = "loading"
+	WidgetStateEmpty   WidgetPresentationState = "empty"
+	WidgetStateError   WidgetPresentationState = "error"
+)
 
 // Page is the canonical typed dashboard presentation model used for rendering
 // and JSON transport. Area ordering is preserved directly by the Areas slice.
@@ -60,14 +73,20 @@ func (page Page) ValidatedLegacyPayload() (map[string]any, error) {
 // Normalize applies page-level defaults and validates opt-in presentation
 // contracts such as Shell.
 func (page Page) Normalize() (Page, error) {
-	if page.Shell == nil {
-		return page, nil
+	for _, area := range page.Areas {
+		for _, widget := range area.Widgets {
+			if !widget.State.Valid() {
+				return Page{}, fmt.Errorf("dashboard: invalid widget presentation state %q", widget.State)
+			}
+		}
 	}
-	shell, err := page.Shell.Normalize()
-	if err != nil {
-		return Page{}, err
+	if page.Shell != nil {
+		shell, err := page.Shell.Normalize()
+		if err != nil {
+			return Page{}, err
+		}
+		page.Shell = &shell
 	}
-	page.Shell = &shell
 	return page, nil
 }
 
@@ -218,16 +237,17 @@ func (area PageArea) legacyPayload(theme map[string]any) map[string]any {
 // App-specific data remains in Data/Meta extensions and will be tightened in the
 // typed widget authoring work that follows this baseline phase.
 type WidgetFrame struct {
-	ID         string         `json:"id,omitempty"`
-	Definition string         `json:"definition,omitempty"`
-	Name       string         `json:"name,omitempty"`
-	Template   string         `json:"template,omitempty"`
-	Area       string         `json:"area,omitempty"`
-	Span       int            `json:"span,omitempty"`
-	Hidden     bool           `json:"hidden,omitempty"`
-	Config     map[string]any `json:"config,omitempty"`
-	Data       any            `json:"data,omitempty"`
-	Meta       WidgetMeta     `json:"meta"`
+	ID         string                  `json:"id,omitempty"`
+	Definition string                  `json:"definition,omitempty"`
+	Name       string                  `json:"name,omitempty"`
+	Template   string                  `json:"template,omitempty"`
+	Area       string                  `json:"area,omitempty"`
+	Span       int                     `json:"span,omitempty"`
+	Hidden     bool                    `json:"hidden,omitempty"`
+	Config     map[string]any          `json:"config,omitempty"`
+	Data       any                     `json:"data,omitempty"`
+	State      WidgetPresentationState `json:"state,omitempty"`
+	Meta       WidgetMeta              `json:"meta"`
 }
 
 func (widget WidgetFrame) legacyPayload(theme map[string]any) map[string]any {
@@ -242,13 +262,28 @@ func (widget WidgetFrame) legacyPayload(theme map[string]any) map[string]any {
 		"area_code":  widget.Area,
 		"span":       widget.Span,
 		"hidden":     widget.Hidden,
+		"state":      widget.State,
 		"metadata":   widget.legacyMetadata(),
 		"theme":      theme,
 	}
 	if widget.Name == "" {
 		delete(payload, "name")
 	}
+	if widget.State == "" {
+		delete(payload, "state")
+	}
 	return payload
+}
+
+// Valid reports whether a widget state is supported. The empty state is a
+// compatibility alias for ready and remains omitted from legacy payloads.
+func (state WidgetPresentationState) Valid() bool {
+	switch state {
+	case "", WidgetStateReady, WidgetStateLoading, WidgetStateEmpty, WidgetStateError:
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeWidgetFrameData(data any) any {

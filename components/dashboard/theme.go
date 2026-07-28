@@ -79,41 +79,32 @@ func (theme *ThemeSelection) CSSVariables() map[string]string {
 	if theme == nil || len(theme.Tokens) == 0 {
 		return nil
 	}
-	vars := make(map[string]string, len(theme.Tokens))
-	for key, value := range theme.Tokens {
-		name := normalizeCSSVariable(key)
-		value = sanitizeCSSVariableValue(value)
-		if name == "" || value == "" {
-			continue
-		}
-		vars[name] = value
-	}
-	return vars
+	return theme.SemanticProjection().Variables
 }
 
 // CSSVariablesInline renders the CSS variable map as a style string.
 func (theme *ThemeSelection) CSSVariablesInline() string {
-	vars := theme.CSSVariables()
-	if len(vars) == 0 {
+	if theme == nil {
 		return ""
 	}
-	keys := make([]string, 0, len(vars))
-	for key := range vars {
+	variables := theme.CSSVariables()
+	if len(variables) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	var builder strings.Builder
+
+	var inline strings.Builder
 	for _, key := range keys {
-		value := vars[key]
-		if value == "" {
-			continue
-		}
-		builder.WriteString(key)
-		builder.WriteString(": ")
-		builder.WriteString(value)
-		builder.WriteString("; ")
+		inline.WriteString(key)
+		inline.WriteString(": ")
+		inline.WriteString(variables[key])
+		inline.WriteByte(';')
 	}
-	return strings.TrimSpace(builder.String())
+	return inline.String()
 }
 
 // AssetURL resolves a named asset using the selection assets.
@@ -136,61 +127,6 @@ func (theme *ThemeSelection) TemplatePath(key string) string {
 // reusing ThemeSelection directly on the typed page contract.
 func (theme *ThemeSelection) MarshalJSON() ([]byte, error) {
 	return json.Marshal(themePayload(theme))
-}
-
-func normalizeCSSVariable(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	if strings.HasPrefix(name, "--") {
-		if isSafeCSSVariableName(name) {
-			return name
-		}
-		return ""
-	}
-	name = "--" + name
-	if !isSafeCSSVariableName(name) {
-		return ""
-	}
-	return name
-}
-
-func isSafeCSSVariableName(name string) bool {
-	if !strings.HasPrefix(name, "--") || len(name) < 3 {
-		return false
-	}
-	for _, r := range name[2:] {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '-' || r == '_':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func sanitizeCSSVariableValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	lower := strings.ToLower(value)
-	if strings.ContainsAny(value, `;{}<>"'`+"`") {
-		return ""
-	}
-	if strings.ContainsRune(value, '\n') || strings.ContainsRune(value, '\r') || strings.ContainsRune(value, '\x00') {
-		return ""
-	}
-	for _, token := range []string{"url(", "expression(", "@import", "javascript:", "vbscript:", "data:"} {
-		if strings.Contains(lower, token) {
-			return ""
-		}
-	}
-	return value
 }
 
 func cloneThemeSelection(selection *ThemeSelection) *ThemeSelection {
@@ -232,6 +168,10 @@ func themePayload(selection *ThemeSelection) map[string]any {
 	}
 	if inline := selection.CSSVariablesInline(); inline != "" {
 		payload["css_vars_inline"] = inline
+	}
+	if selection.SemanticDashboardEnabled() {
+		payload["semantic_enabled"] = true
+		payload["semantic_diagnostics"] = selection.DashboardConsumerDiagnostics()
 	}
 	if selection.Assets.Prefix != "" {
 		payload["asset_prefix"] = selection.Assets.Prefix

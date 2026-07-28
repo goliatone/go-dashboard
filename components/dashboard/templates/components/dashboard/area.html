@@ -1,5 +1,5 @@
 {% if area.widgets|length == 0 %}
-<div class="dashboard-area dashboard-area--empty">
+<div class="dashboard-area dashboard-area--empty" data-dashboard-state="empty">
   <p>{{ T("dashboard.area.empty", locale, "No widgets configured for this area.") }} <span>{{ area.code }}</span></p>
 </div>
 {% else %}
@@ -13,7 +13,11 @@
         {% set span = widget.metadata.layout.columns %}
       {% endif %}
     {% endif %}
-    <section class="dashboard-widget dashboard-widget--span-{{ span }}" data-widget="{{ widget.id }}" style="--dashboard-widget-span: {{ span }}">
+    <section class="dashboard-widget dashboard-widget--span-{{ span }}"
+      data-widget="{{ widget.id }}"
+      data-dashboard-state="{{ coalesce(widget.state, "ready") }}"
+      {% if widget.state == "loading" %}aria-busy="true"{% endif %}
+      style="--dashboard-widget-span: {{ span }}">
       {% include widget.template with widget=widget locale=locale %}
     </section>
   {% endfor %}

@@ -16,7 +16,72 @@
 }
 </style>
 {% endif %}
-<div class="dashboard" {% if theme and theme.variant %}data-theme="{{ theme.variant }}"{% endif %}>
+{% if theme and theme.semantic_enabled %}
+<style data-dashboard-semantic-theme>
+.dashboard[data-dashboard-semantic-theme] {
+  background: var(--dashboard-surface, var(--color-surface-canvas, inherit));
+  color: var(--color-text-primary, var(--dashboard-foreground, inherit));
+  font-family: var(--font-family-body, inherit);
+  transition:
+    background-color var(--motion-duration-fast, 0s) var(--motion-easing-standard, ease),
+    color var(--motion-duration-fast, 0s) var(--motion-easing-standard, ease);
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard__header h1 {
+  color: var(--color-text-primary, var(--dashboard-accent, inherit));
+  font-family: var(--font-family-heading, var(--font-family-body, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard__header p,
+.dashboard[data-dashboard-semantic-theme] .widget__meta,
+.dashboard[data-dashboard-semantic-theme] .widget__subtitle,
+.dashboard[data-dashboard-semantic-theme] .widget small {
+  color: var(--dashboard-metric-label, var(--color-text-secondary, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard-widget {
+  background: var(--dashboard-card-background, var(--color-surface-raised, transparent));
+  border-color: var(--dashboard-card-border, var(--color-border-default, currentColor));
+  border-radius: var(--dashboard-card-radius, var(--radius-surface, inherit));
+  box-shadow: var(--dashboard-card-shadow, var(--shadow-surface, none));
+}
+.dashboard[data-dashboard-semantic-theme] .widget__stat {
+  color: var(--dashboard-metric-value, var(--color-text-primary, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] [data-dashboard-trend="positive"],
+.dashboard[data-dashboard-semantic-theme] .status--ok,
+.dashboard[data-dashboard-semantic-theme] .status--healthy {
+  color: var(--dashboard-metric-trend-positive, var(--color-status-success, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] [data-dashboard-trend="negative"],
+.dashboard[data-dashboard-semantic-theme] .status--error,
+.dashboard[data-dashboard-semantic-theme] .status--failed {
+  color: var(--dashboard-metric-trend-negative, var(--color-status-danger, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard-widget:focus-within {
+  outline: 2px solid var(--color-focus-ring, currentColor);
+  outline-offset: 2px;
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="loading"] {
+  cursor: progress;
+  opacity: 0.72;
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="empty"],
+.dashboard[data-dashboard-semantic-theme] .dashboard-area--empty {
+  color: var(--dashboard-metric-label, var(--color-text-secondary, inherit));
+}
+.dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="error"] {
+  border-color: var(--dashboard-metric-trend-negative, var(--color-status-danger, currentColor));
+  color: var(--dashboard-metric-trend-negative, var(--color-status-danger, inherit));
+}
+@media (max-width: 760px) {
+  .dashboard[data-dashboard-semantic-theme] .dashboard__body,
+  .dashboard[data-dashboard-semantic-theme] .dashboard-area {
+    gap: var(--space-stack, inherit);
+  }
+}
+</style>
+{% endif %}
+<div class="dashboard"
+  {% if theme and theme.variant %}data-theme="{{ theme.variant }}"{% endif %}
+  {% if theme and theme.semantic_enabled %}data-dashboard-semantic-theme{% endif %}>
   {% if shell %}
   {% include "components/dashboard/shell.html" with shell=shell locale=locale %}
   {% else %}

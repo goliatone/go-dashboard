@@ -131,6 +131,7 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 			Area:       areaCode,
 			Span:       widgetSpan(inst.Metadata),
 			Hidden:     widgetHidden(inst.Metadata),
+			State:      widgetPresentationState(inst.Metadata),
 			Meta: WidgetMeta{
 				Order:         idx + 1,
 				Layout:        widgetLayout(inst.Metadata),
@@ -141,6 +142,18 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 		})
 	}
 	return widgets, assets, nil
+}
+
+func widgetPresentationState(metadata map[string]any) WidgetPresentationState {
+	if len(metadata) == 0 {
+		return ""
+	}
+	value, _ := metadata["state"].(string)
+	state := WidgetPresentationState(strings.TrimSpace(value))
+	if !state.Valid() {
+		return ""
+	}
+	return state
 }
 
 func (c *Controller) templatePath() string {
@@ -320,7 +333,7 @@ func widgetExtensions(metadata map[string]any) map[string]json.RawMessage {
 	extensions := map[string]json.RawMessage{}
 	for key, value := range metadata {
 		switch key {
-		case "data", "layout", "hidden":
+		case "data", "layout", "hidden", "state":
 			continue
 		case widgetViewModelMetadataKey:
 			continue
