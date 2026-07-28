@@ -260,4 +260,94 @@ func TestTemplateRendererKeepsNoShellDashboardLayout(t *testing.T) {
 	if !strings.Contains(out, `dashboard__column--main`) || !strings.Contains(out, `dashboard__column--sidebar`) {
 		t.Fatalf("expected existing dashboard columns to render, got %s", out)
 	}
+	if strings.Contains(out, `data-dashboard-semantic-theme`) {
+		t.Fatalf("omitted aligned tokens changed the legacy dashboard output: %s", out)
+	}
+}
+
+func TestTemplateRendererConsumesSemanticThemeAndWidgetStates(t *testing.T) {
+	renderer, err := NewTemplateRenderer()
+	if err != nil {
+		t.Fatalf("NewTemplateRenderer returned error: %v", err)
+	}
+	page := Page{
+		Title: "Semantic Dashboard",
+		Theme: &ThemeSelection{
+			Variant: "dark",
+			Tokens: map[string]string{
+				"dashboard.surface":         "#0f172a",
+				"dashboard.card.background": "#111827",
+				"dashboard.card.border":     "#334155",
+				"dashboard.card.radius":     "0.75rem",
+				"dashboard.card.shadow":     "0 1px 2px rgba(0, 0, 0, 0.08)",
+				"dashboard.metric.label":    "#94a3b8",
+				"dashboard.metric.value":    "#f8fafc",
+				"color.focus.ring":          "#38bdf8",
+				"space.stack":               "1rem",
+			},
+		},
+		Areas: []PageArea{
+			{
+				Slot: "main",
+				Code: "admin.dashboard.main",
+				Widgets: []WidgetFrame{
+					semanticStateWidget("loading", WidgetStateLoading),
+					semanticStateWidget("empty", WidgetStateEmpty),
+					semanticStateWidget("error", WidgetStateError),
+				},
+			},
+			{Slot: "sidebar", Code: "admin.dashboard.sidebar"},
+			{Slot: "footer", Code: "admin.dashboard.footer"},
+		},
+	}
+
+	var buf bytes.Buffer
+	if _, err := renderer.RenderPage("dashboard.html", page, &buf); err != nil {
+		t.Fatalf("RenderPage returned error: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`data-theme="dark"`,
+		`data-dashboard-semantic-theme`,
+		`var(--dashboard-card-background, var(--color-surface-raised, transparent))`,
+		`var(--dashboard-metric-label, var(--color-text-secondary, inherit))`,
+		`@media (max-width: 760px)`,
+		`data-dashboard-state="loading"`,
+		`aria-busy="true"`,
+		`data-dashboard-state="empty"`,
+		`data-dashboard-state="error"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected semantic dashboard output to contain %q, got %s", want, out)
+		}
+	}
+}
+
+func TestPageNormalizeRejectsInvalidWidgetPresentationState(t *testing.T) {
+	page := Page{
+		Areas: []PageArea{{
+			Slot: "main",
+			Widgets: []WidgetFrame{{
+				ID:    "invalid-state",
+				State: WidgetPresentationState("pending"),
+			}},
+		}},
+	}
+	if _, err := page.Normalize(); err == nil {
+		t.Fatal("expected invalid widget presentation state to fail normalization")
+	}
+}
+
+func semanticStateWidget(id string, state WidgetPresentationState) WidgetFrame {
+	return WidgetFrame{
+		ID:         id,
+		Definition: "admin.widget.user_stats",
+		Template:   "widgets/user_stats.html",
+		State:      state,
+		Config:     map[string]any{"metric": "total"},
+		Data: map[string]any{
+			"title":  id,
+			"values": map[string]int{"total": 1},
+		},
+	}
 }

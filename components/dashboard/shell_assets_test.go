@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,5 +32,30 @@ func TestShellAssetsHandlerServesEmbeddedRuntime(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "DashboardShell") {
 		t.Fatalf("expected shell runtime response, got %q", resp.Body.String())
+	}
+}
+
+func TestShellCSSUsesSemanticFallbacksAndPreservesDefaults(t *testing.T) {
+	file, err := ShellAssets().Open("shell.css")
+	if err != nil {
+		t.Fatalf("open embedded shell CSS: %v", err)
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		t.Fatalf("read embedded shell CSS: %v", err)
+	}
+	css := string(data)
+	for _, want := range []string{
+		`var(--dashboard-surface, var(--color-surface-canvas, #f8fafc))`,
+		`var(--dashboard-card-background, var(--color-surface-raised, var(--dashboard-card, #ffffff)))`,
+		`var(--dashboard-card-border, var(--color-border-default, var(--dashboard-border, #d8dee8)))`,
+		`var(--dashboard-card-radius, var(--radius-surface, var(--dashboard-radius, 6px)))`,
+		`var(--dashboard-card-shadow, var(--shadow-surface, var(--dashboard-shadow, 0 1px 2px rgba(15, 23, 42, 0.08))))`,
+		`@media (max-width: 760px)`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Fatalf("embedded shell CSS missing semantic fallback %q", want)
+		}
 	}
 }

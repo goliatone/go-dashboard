@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -166,6 +167,128 @@ func TestEChartsProviderCustomThemeBeatsSelection(t *testing.T) {
 	assert.Equal(t, string(types.ThemeWalden), data["theme"])
 }
 
+func TestEChartsProviderAppliesSemanticPaletteWithoutReplacingNamedTheme(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar", WithChartTheme(string(types.ThemeWalden)))
+	ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":  "Semantic Palette",
+		"x_axis": []string{"A", "B"},
+		"series": []map[string]any{
+			{"name": "First", "data": []float64{1, 2}},
+			{"name": "Second", "data": []float64{2, 3}},
+		},
+	})
+	ctx.Theme = &ThemeSelection{Tokens: map[string]string{
+		"chart.series.1":                  "#2563eb",
+		"chart.series.2":                  "#f59e0b",
+		"dashboard.chart.axis":            "#64748b",
+		"dashboard.chart.grid":            "#cbd5e1",
+		"dashboard.chart.tooltip-surface": "#ffffff",
+		"dashboard.chart.tooltip-text":    "#0f172a",
+	}}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	assert.Equal(t, string(types.ThemeWalden), data["theme"])
+	assert.Equal(t, []string{
+		"#2563eb", "#f59e0b", "#2563eb", "#f59e0b",
+		"#2563eb", "#f59e0b", "#2563eb", "#f59e0b",
+	}, stringSliceValue(data["semantic_palette"]))
+
+	markup := html(data)
+	for _, want := range []string{
+		`"itemstyle":{"color":"#2563eb"}`,
+		`"itemstyle":{"color":"#f59e0b"}`,
+		`"color":"#64748b"`,
+		`"color":"#cbd5e1"`,
+		`"backgroundcolor":"#ffffff"`,
+		`"textstyle":{"color":"#0f172a"}`,
+	} {
+		assert.Contains(t, markup, want)
+	}
+}
+
+func TestEChartsProviderCacheSeparatesResolvedThemeAndPalette(t *testing.T) {
+	t.Parallel()
+	cache := newKeyedCountingCache()
+	provider := NewEChartsProvider("bar", WithChartCache(cache))
+	config := map[string]any{
+		"title":  "Variant Cache",
+		"x_axis": []string{"A"},
+		"series": []map[string]any{{"name": "Series", "data": []float64{1}}},
+	}
+
+	dark := sampleChartContext("admin.widget.bar_chart", config)
+	dark.Theme = &ThemeSelection{
+		Variant: "dark",
+		Tokens:  map[string]string{"chart.series.1": "#111827"},
+	}
+	light := sampleChartContext("admin.widget.bar_chart", config)
+	light.Theme = &ThemeSelection{
+		Variant: "light",
+		Tokens:  map[string]string{"chart.series.1": "#f8fafc"},
+	}
+
+	darkData, err := provider.Fetch(context.Background(), dark)
+	require.NoError(t, err)
+	lightData, err := provider.Fetch(context.Background(), light)
+	require.NoError(t, err)
+
+	assert.Equal(t, int32(2), cache.calls.Load())
+	assert.Contains(t, html(darkData), "#111827")
+	assert.NotContains(t, html(darkData), "#f8fafc")
+	assert.Contains(t, html(lightData), "#f8fafc")
+	assert.NotContains(t, html(lightData), "#111827")
+	assert.Equal(t, string(types.ThemeWonderland), darkData["theme"])
+	assert.Equal(t, string(types.ThemeWesteros), lightData["theme"])
+}
+
+func TestEChartsProviderAppliesSemanticPaletteToPieData(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("pie")
+	ctx := sampleChartContext("admin.widget.pie_chart", map[string]any{
+		"title": "Semantic Pie",
+		"series": []map[string]any{{
+			"name": "Categories",
+			"data": []map[string]any{
+				{"name": "A", "value": 1},
+				{"name": "B", "value": 2},
+			},
+		}},
+	})
+	ctx.Theme = &ThemeSelection{Tokens: map[string]string{
+		"chart.series.1": "#2563eb",
+		"chart.series.2": "#f59e0b",
+	}}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	markup := html(data)
+	assert.Contains(t, markup, `"itemstyle":{"color":"#2563eb"}`)
+	assert.Contains(t, markup, `"itemstyle":{"color":"#f59e0b"}`)
+}
+
+func TestEChartsProviderExposesInvalidChartDiagnosticsWithoutChangingPalette(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar")
+	ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":  "Invalid Semantic Palette",
+		"x_axis": []string{"A"},
+		"series": []map[string]any{{"name": "Series", "data": []float64{1}}},
+	})
+	ctx.Theme = &ThemeSelection{Tokens: map[string]string{
+		"chart.series.1": "url(https://example.test/color)",
+	}}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	if values := stringSliceValue(data["semantic_palette"]); len(values) != 0 {
+		t.Fatalf("invalid chart token changed the palette: %#v", values)
+	}
+	assert.Contains(t, serializedThemeDiagnosticStatuses(data["theme_diagnostics"]), "chart.series.1:invalid")
+	assert.NotContains(t, html(data), "example.test")
+}
+
 func TestEChartsProviderSanitizesStrings(t *testing.T) {
 	t.Parallel()
 	provider := NewEChartsProvider("bar")
@@ -299,9 +422,49 @@ func jsAssets(data WidgetData) []string {
 	return out
 }
 
+func serializedThemeDiagnosticStatuses(value any) []string {
+	if diagnostics, ok := value.([]TokenDiagnostic); ok {
+		return diagnosticStatuses(diagnostics)
+	}
+	data, _ := json.Marshal(value)
+	var raw []map[string]any
+	_ = json.Unmarshal(data, &raw)
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		token, _ := item["token"].(string)
+		status, _ := item["status"].(string)
+		if token != "" && status != "" {
+			out = append(out, token+":"+status)
+		}
+	}
+	return out
+}
+
 type countingCache struct {
 	calls int32
 	value string
+}
+
+type keyedCountingCache struct {
+	values map[string]string
+	calls  atomic.Int32
+}
+
+func newKeyedCountingCache() *keyedCountingCache {
+	return &keyedCountingCache{values: map[string]string{}}
+}
+
+func (cache *keyedCountingCache) GetOrRender(key string, render func() (string, error)) (string, error) {
+	if value, ok := cache.values[key]; ok {
+		return value, nil
+	}
+	value, err := render()
+	if err != nil {
+		return "", err
+	}
+	cache.values[key] = value
+	cache.calls.Add(1)
+	return value, nil
 }
 
 func (c *countingCache) GetOrRender(_ string, render func() (string, error)) (string, error) {
