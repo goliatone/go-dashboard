@@ -191,7 +191,9 @@ Dashboard chrome, widget states, and charts can consume the optional semantic
 theme contract documented in `components/dashboard/README.md`. go-dashboard
 keeps its structural `ThemeProvider` interface and has no required go-theme
 dependency; named/custom ECharts themes remain compatible with semantic
-series, axis, grid, and tooltip overrides.
+series and tooltip overrides, while Cartesian providers additionally consume
+axis and grid tokens. Dashboard CSS and diagnostics are derived from the
+concrete page inventory so partial themes do not reset unrelated host styles.
 
 - Sample app: `go run ./examples/goadmin` creates chart widgets in the demo dashboard.
 - Dynamic sales widgets are powered by `SalesChartProvider`, which can query any
