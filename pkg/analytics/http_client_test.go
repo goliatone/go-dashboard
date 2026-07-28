@@ -19,7 +19,10 @@ func TestHTTPClientFetchFunnel(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer secret" {
 			t.Fatalf("expected auth header, got %s", got)
 		}
-		_ = json.NewDecoder(r.Body).Decode(&struct{}{})
+		if err := json.NewDecoder(r.Body).Decode(&struct{}{}); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
 		resp := funnelResponse{
 			Range:          "30d",
 			Segment:        "enterprise",
@@ -27,7 +30,9 @@ func TestHTTPClientFetchFunnel(t *testing.T) {
 			ConversionRate: 5.1,
 			Steps:          []funnelStep{{Label: "Visitors", Value: 1000, Position: 0}},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(server.Close)
 
@@ -55,7 +60,9 @@ func TestHTTPClientFetchAlerts(t *testing.T) {
 				{Day: time.Now().UTC().Format(time.DateOnly), Counts: map[string]int{"critical": 3}},
 			},
 		}
-		_ = json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			t.Errorf("encode response: %v", err)
+		}
 	}))
 	t.Cleanup(server.Close)
 

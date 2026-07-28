@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -28,7 +29,9 @@ func (r *stubRenderer) RenderPage(name string, page Page, out ...io.Writer) (str
 	r.lastTemplate = name
 	r.lastPage = page
 	if len(out) > 0 && out[0] != nil {
-		out[0].Write([]byte("<html></html>"))
+		if _, err := out[0].Write([]byte("<html></html>")); err != nil {
+			return "", err
+		}
 	}
 	return "<html></html>", r.err
 }
@@ -115,7 +118,7 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected main area map, got %T", areas["main"])
 	}
-	if _, ok := mainArea["code"]; !ok {
+	if _, exists := mainArea["code"]; !exists {
 		t.Fatalf("expected snake_case code key")
 	}
 	widgets, ok := mainArea["widgets"].([]map[string]any)
@@ -125,10 +128,10 @@ func TestLayoutPayloadUsesSnakeCaseKeys(t *testing.T) {
 	if len(widgets) == 0 {
 		t.Fatalf("expected at least one widget")
 	}
-	if _, ok := widgets[0]["area_code"]; !ok {
+	if _, exists := widgets[0]["area_code"]; !exists {
 		t.Fatalf("expected area_code key on widget payload")
 	}
-	if _, ok := widgets[0]["data"].(map[string]any); !ok {
+	if _, valid := widgets[0]["data"].(map[string]any); !valid {
 		t.Fatalf("expected widget data normalized to map[string]any, got %T", widgets[0]["data"])
 	}
 
@@ -213,7 +216,9 @@ func TestLayoutPayloadIncludesTheme(t *testing.T) {
 	if assets["logo"] != "https://cdn.example.com/img/logo.svg" {
 		t.Fatalf("expected asset URL resolved with prefix, got %s", assets["logo"])
 	}
-	widgets := payload["areas"].(map[string]any)["main"].(map[string]any)["widgets"].([]map[string]any)
+	areas := requireTestValue[map[string]any](t, payload["areas"])
+	mainArea := requireTestValue[map[string]any](t, areas["main"])
+	widgets := requireTestValue[[]map[string]any](t, mainArea["widgets"])
 	if widgets[0]["theme"] == nil {
 		t.Fatalf("expected widget payload to include theme reference")
 	}
@@ -263,7 +268,7 @@ func TestControllerSupportsCustomAreas(t *testing.T) {
 	if _, ok := areas["bottom"]; !ok {
 		t.Fatalf("expected bottom slot in areas map")
 	}
-	ordered := payload["ordered_areas"].([]map[string]any)
+	ordered := requireTestValue[[]map[string]any](t, payload["ordered_areas"])
 	if ordered[0]["slot"] != "hero" || ordered[1]["slot"] != "bottom" {
 		t.Fatalf("unexpected ordered slot sequence: %+v", ordered)
 	}
@@ -343,7 +348,8 @@ func TestControllerPageDecoratorAppliesBeforeHTMLAndJSONAdapters(t *testing.T) {
 	if payload["title"] != "Decorated user-1" {
 		t.Fatalf("expected layout payload to derive from decorated page, got %+v", payload)
 	}
-	main := payload["areas"].(map[string]any)["main"].(map[string]any)
+	areas := requireTestValue[map[string]any](t, payload["areas"])
+	main := requireTestValue[map[string]any](t, areas["main"])
 	if main["title"] != "Primary" {
 		t.Fatalf("expected area title preserved through payload adapter, got %+v", main)
 	}
@@ -394,8 +400,8 @@ func TestControllerPageNormalizesDecoratedShell(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LayoutPayload returned error: %v", err)
 	}
-	shellPayload := payload["shell"].(map[string]any)
-	storage := shellPayload["storage"].(map[string]any)
+	shellPayload := requireTestValue[map[string]any](t, payload["shell"])
+	storage := requireTestValue[map[string]any](t, shellPayload["storage"])
 	if storage["key"] != "go-dashboard:shell:v1:workbench:module:settings:viewer:anonymous" {
 		t.Fatalf("expected normalized storage key in payload, got %+v", storage)
 	}
@@ -598,14 +604,14 @@ func TestControllerPageAggregatesAndDeduplicatesWidgetAssets(t *testing.T) {
 		t.Fatalf("expected main widgets, got %+v", page.Areas)
 	}
 	for _, widget := range main.Widgets {
-		data, ok := widget.Data.(map[string]any)
-		if !ok {
+		data, valid := widget.Data.(map[string]any)
+		if !valid {
 			t.Fatalf("expected aggregated chart widgets normalized to maps, got %T", widget.Data)
 		}
-		if _, ok := data["js_assets"]; ok {
+		if _, exists := data["js_assets"]; exists {
 			t.Fatalf("expected widget js assets stripped after promotion, got %+v", data)
 		}
-		if _, ok := data["css_assets"]; ok {
+		if _, exists := data["css_assets"]; exists {
 			t.Fatalf("expected widget css assets stripped after promotion, got %+v", data)
 		}
 	}
@@ -735,26 +741,81 @@ func TestPageJSONUsesCanonicalTypedContract(t *testing.T) {
 	if len(areas) != 2 {
 		t.Fatalf("expected 2 ordered areas, got %d", len(areas))
 	}
-	firstArea := areas[0].(map[string]any)
-	secondArea := areas[1].(map[string]any)
+	firstArea := requireTestValue[map[string]any](t, areas[0])
+	secondArea := requireTestValue[map[string]any](t, areas[1])
 	if firstArea["slot"] != "hero" || secondArea["slot"] != "footer" {
 		t.Fatalf("expected areas slice ordering preserved, got %+v", areas)
 	}
-	theme := payload["theme"].(map[string]any)
+	theme := requireTestValue[map[string]any](t, payload["theme"])
 	if theme["variant"] != "dark" {
 		t.Fatalf("expected typed page theme to reuse ThemeSelection shape, got %#v", theme["variant"])
 	}
 	if theme["chart_theme"] != "wonderland" {
 		t.Fatalf("expected chart theme to serialize from ThemeSelection, got %#v", theme["chart_theme"])
 	}
-	widgets := firstArea["widgets"].([]any)
-	widget := widgets[0].(map[string]any)
-	meta := widget["meta"].(map[string]any)
-	if meta["order"].(float64) != 1 {
+	widgets := requireTestValue[[]any](t, firstArea["widgets"])
+	widget := requireTestValue[map[string]any](t, widgets[0])
+	meta := requireTestValue[map[string]any](t, widget["meta"])
+	if requireTestValue[float64](t, meta["order"]) != 1 {
 		t.Fatalf("expected widget meta order in canonical json, got %#v", meta["order"])
 	}
-	extensions := meta["extensions"].(map[string]any)
+	extensions := requireTestValue[map[string]any](t, meta["extensions"])
 	if extensions["source"] != "fixture" {
 		t.Fatalf("expected widget extensions encoded through typed meta, got %#v", extensions["source"])
+	}
+}
+
+func requireTestValue[T any](t *testing.T, value any) T {
+	t.Helper()
+	typed, valid := value.(T)
+	if !valid {
+		t.Fatalf("expected %T, got %T", *new(T), value)
+	}
+	return typed
+}
+
+func TestControllerWidgetFramesRejectInvalidPresentationStateMetadata(t *testing.T) {
+	for name, state := range map[string]any{
+		"unknown string": "pending",
+		"non-string":     42,
+	} {
+		t.Run(name, func(t *testing.T) {
+			controller := NewController(ControllerOptions{Service: &stubLayoutResolver{
+				layout: Layout{Areas: map[string][]WidgetInstance{
+					"admin.dashboard.main": {{
+						ID:           "invalid-state",
+						DefinitionID: "admin.widget.user_stats",
+						Metadata:     map[string]any{"state": state},
+					}},
+				}},
+			}})
+			_, err := controller.Page(context.Background(), ViewerContext{})
+			if err == nil {
+				t.Fatalf("expected invalid presentation state %v to fail", state)
+			}
+			if !strings.Contains(err.Error(), `widget "invalid-state"`) {
+				t.Fatalf("expected widget context in error, got %v", err)
+			}
+		})
+	}
+
+	controller := &Controller{}
+	for name, state := range map[string]any{
+		"trimmed string": " loading ",
+		"typed value":    WidgetStateLoading,
+	} {
+		t.Run(name, func(t *testing.T) {
+			widgets, _, err := controller.widgetFrames("admin.dashboard.main", []WidgetInstance{{
+				ID:           "loading-state",
+				DefinitionID: "admin.widget.user_stats",
+				Metadata:     map[string]any{"state": state},
+			}})
+			if err != nil {
+				t.Fatalf("valid presentation state returned error: %v", err)
+			}
+			if len(widgets) != 1 || widgets[0].State != WidgetStateLoading {
+				t.Fatalf("valid presentation state was not normalized: %+v", widgets)
+			}
+		})
 	}
 }

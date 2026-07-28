@@ -135,7 +135,7 @@ func TestShellNormalizeValidatesActions(t *testing.T) {
 		t.Fatalf("Normalize returned error: %v", err)
 	}
 	payload := normalized.legacyPayload()
-	actions := payload["actions"].([]map[string]any)
+	actions := requireTestValue[[]map[string]any](t, payload["actions"])
 	if actions[0]["expanded"] != false {
 		t.Fatalf("expected toggle action expansion derived from collapsed region, got %+v", actions[0])
 	}
@@ -173,7 +173,7 @@ func TestPageLegacyPayloadIncludesShellOnlyWhenConfigured(t *testing.T) {
 	if _, ok := payload["shell"]; ok {
 		t.Fatalf("expected no shell payload for ordinary dashboard pages")
 	}
-	areas := payload["areas"].(map[string]any)
+	areas := requireTestValue[map[string]any](t, payload["areas"])
 	if _, ok := areas["main"]; !ok {
 		t.Fatalf("expected existing main area payload to remain available")
 	}
@@ -222,18 +222,18 @@ func TestPageJSONNormalizesShellAndRejectsInvalidShell(t *testing.T) {
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		t.Fatalf("Unmarshal returned error: %v", err)
 	}
-	shell := payload["shell"].(map[string]any)
-	storage := shell["storage"].(map[string]any)
+	shell := requireTestValue[map[string]any](t, payload["shell"])
+	storage := requireTestValue[map[string]any](t, shell["storage"])
 	if storage["namespace"] != DefaultShellStateNamespace {
 		t.Fatalf("expected normalized shell storage, got %+v", storage)
 	}
-	regions := shell["regions"].([]any)
-	region := regions[0].(map[string]any)
+	regions := requireTestValue[[]any](t, shell["regions"])
+	region := requireTestValue[map[string]any](t, regions[0])
 	if region["placement"] != ShellRegionPlacementMain {
 		t.Fatalf("expected normalized main placement, got %+v", region)
 	}
-	sizing := region["sizing"].(map[string]any)
-	if sizing["default"].(float64) != 320 {
+	sizing := requireTestValue[map[string]any](t, region["sizing"])
+	if requireTestValue[float64](t, sizing["default"]) != 320 {
 		t.Fatalf("expected normalized sizing in JSON, got %+v", sizing)
 	}
 

@@ -18,7 +18,9 @@ func (renderer *captureLegacyRenderer) Render(name string, data any, out ...io.W
 	renderer.lastTemplate = name
 	renderer.lastData = data
 	if len(out) > 0 && out[0] != nil {
-		_, _ = out[0].Write([]byte("ok"))
+		if _, err := out[0].Write([]byte("ok")); err != nil {
+			return "", err
+		}
 	}
 	return "ok", nil
 }
@@ -61,12 +63,12 @@ func TestNewTemplateRendererUsesEmbeddedTemplatesOutsidePackageDirectory(t *test
 		t.Fatalf("Getwd returned error: %v", err)
 	}
 	tempDir := t.TempDir()
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("Chdir returned error: %v", err)
+	if chdirErr := os.Chdir(tempDir); chdirErr != nil {
+		t.Fatalf("Chdir returned error: %v", chdirErr)
 	}
 	defer func() {
-		if err := os.Chdir(cwd); err != nil {
-			t.Fatalf("failed to restore cwd: %v", err)
+		if restoreErr := os.Chdir(cwd); restoreErr != nil {
+			t.Fatalf("failed to restore cwd: %v", restoreErr)
 		}
 	}()
 
@@ -319,6 +321,52 @@ func TestTemplateRendererConsumesSemanticThemeAndWidgetStates(t *testing.T) {
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected semantic dashboard output to contain %q, got %s", want, out)
+		}
+	}
+}
+
+func TestTemplateRendererPartialSemanticThemeDoesNotResetUnrelatedStyles(t *testing.T) {
+	renderer, err := NewTemplateRenderer()
+	if err != nil {
+		t.Fatalf("NewTemplateRenderer returned error: %v", err)
+	}
+	page := Page{
+		Title: "Focused Dashboard",
+		Theme: &ThemeSelection{Tokens: map[string]string{
+			"color.focus.ring": "#0ea5e9",
+		}},
+		Areas: []PageArea{{
+			Slot: "main",
+			Code: "admin.dashboard.main",
+			Widgets: []WidgetFrame{{
+				ID:         "metric",
+				Definition: "admin.widget.user_stats",
+				Template:   "widgets/user_stats.html",
+				Config:     map[string]any{"metric": "total"},
+				Data:       map[string]any{"title": "Users", "values": map[string]int{"total": 1}},
+			}},
+		}},
+	}
+
+	var buf bytes.Buffer
+	if _, err := renderer.RenderPage("dashboard.html", page, &buf); err != nil {
+		t.Fatalf("RenderPage returned error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `.dashboard-widget:focus-within`) {
+		t.Fatalf("focus-only theme did not emit its consumer rule: %s", out)
+	}
+	for _, unexpected := range []string{
+		`background: var(--dashboard-card-background`,
+		`border-color: var(--dashboard-card-border`,
+		`border-radius: var(--dashboard-card-radius`,
+		`box-shadow: var(--dashboard-card-shadow`,
+		`color: var(--dashboard-metric-value`,
+		`color: var(--dashboard-accent`,
+		`color: var(--dashboard-muted`,
+	} {
+		if strings.Contains(out, unexpected) {
+			t.Fatalf("focus-only theme emitted unrelated declaration %q: %s", unexpected, out)
 		}
 	}
 }

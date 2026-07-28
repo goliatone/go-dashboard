@@ -88,7 +88,9 @@ func TestHookNotifySkipsMissingVerb(t *testing.T) {
 	sink := &recordingSink{}
 	hook := Hook{Sink: sink}
 
-	_ = hook.Notify(context.Background(), activity.Event{})
+	if err := hook.Notify(context.Background(), activity.Event{}); err != nil {
+		t.Fatalf("Notify invalid event returned error: %v", err)
+	}
 
 	if len(sink.records) != 0 {
 		t.Fatalf("expected no records for empty event, got %d", len(sink.records))

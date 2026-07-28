@@ -1,6 +1,7 @@
 package admininterop
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,7 +57,7 @@ func TestInteropCompiles(t *testing.T) {
 		t.Fatalf("write interop test: %v", err)
 	}
 
-	cmd := exec.Command("go", "test", "-mod=readonly", "./...")
+	cmd := exec.CommandContext(context.Background(), "go", "test", "-mod=readonly", "./...")
 	cmd.Dir = moduleDir
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	output, err := cmd.CombinedOutput()

@@ -68,15 +68,18 @@ func TestRegistryCatalogSnapshotIsStableAndOrdered(t *testing.T) {
 	}
 
 	catalog.Areas[0].Name = "Mutated"
-	catalog.Definitions[0].Schema["properties"].(map[string]any)["series"].([]map[string]any)[0]["type"] = "string"
+	properties := requireTestValue[map[string]any](t, catalog.Definitions[0].Schema["properties"])
+	series := requireTestValue[[]map[string]any](t, properties["series"])
+	series[0]["type"] = "string"
 	catalog.Providers[0].Manifest.Capabilities[0] = "mutated"
 
 	refreshed := reg.Catalog()
 	if refreshed.Areas[0].Name != "Hero" {
 		t.Fatalf("expected area snapshot cloning, got %+v", refreshed.Areas)
 	}
-	series := refreshed.Definitions[0].Schema["properties"].(map[string]any)["series"].([]map[string]any)
-	if series[0]["type"] != "number" {
+	refreshedProperties := requireTestValue[map[string]any](t, refreshed.Definitions[0].Schema["properties"])
+	refreshedSeries := requireTestValue[[]map[string]any](t, refreshedProperties["series"])
+	if refreshedSeries[0]["type"] != "number" {
 		t.Fatalf("expected nested schema cloning, got %+v", refreshed.Definitions[0].Schema)
 	}
 	if refreshed.Providers[0].Manifest.Capabilities[0] != "render" {

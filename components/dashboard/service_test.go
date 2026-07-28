@@ -44,10 +44,12 @@ func TestConfigureLayoutAppliesHiddenOverrides(t *testing.T) {
 	}
 	prefs := NewInMemoryPreferenceStore()
 	viewer := ViewerContext{UserID: "user-3"}
-	_ = prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
+	if err := prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
 		AreaOrder:     map[string][]string{"admin.dashboard.main": {"w1", "w2"}},
 		HiddenWidgets: map[string]bool{"w2": true},
-	})
+	}); err != nil {
+		t.Fatalf("SaveLayoutOverrides returned error: %v", err)
+	}
 	service := NewService(Options{
 		WidgetStore:     store,
 		PreferenceStore: prefs,
@@ -73,9 +75,11 @@ func TestConfigureLayoutAppliesPreferenceOverrides(t *testing.T) {
 	}
 	prefs := NewInMemoryPreferenceStore()
 	viewer := ViewerContext{UserID: "user-2"}
-	_ = prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
+	if err := prefs.SaveLayoutOverrides(context.Background(), viewer, LayoutOverrides{
 		AreaOrder: map[string][]string{"admin.dashboard.main": {"w2", "w1"}},
-	})
+	}); err != nil {
+		t.Fatalf("SaveLayoutOverrides returned error: %v", err)
+	}
 	service := NewService(Options{
 		WidgetStore:     store,
 		PreferenceStore: prefs,
@@ -120,7 +124,7 @@ func TestConfigureLayoutAppliesRowMetadata(t *testing.T) {
 		t.Fatalf("ConfigureLayout returned error: %v", err)
 	}
 	widget := layout.Areas["admin.dashboard.main"][0]
-	meta, _ := widget.Metadata["layout"].(map[string]any)
+	meta := requireTestValue[map[string]any](t, widget.Metadata["layout"])
 	if meta == nil {
 		t.Fatalf("expected layout metadata, none found")
 	}
@@ -571,7 +575,10 @@ func TestUpdateWidgetValidatesConfigAndEmitsEvent(t *testing.T) {
 	if hook.events != 1 {
 		t.Fatalf("expected refresh event recorded")
 	}
-	updated, _ := store.GetInstance(context.Background(), "w1")
+	updated, err := store.GetInstance(context.Background(), "w1")
+	if err != nil {
+		t.Fatalf("GetInstance returned error: %v", err)
+	}
 	if !reflect.DeepEqual(updated.Configuration, cfg) {
 		t.Fatalf("expected configuration updated, got %#v", updated.Configuration)
 	}

@@ -22,17 +22,21 @@ func TestHooksNotifyNormalizesAndSkipsInvalid(t *testing.T) {
 	}
 
 	// Missing verb: should skip.
-	_ = hooks.Notify(context.Background(), Event{})
+	if err := hooks.Notify(context.Background(), Event{}); err != nil {
+		t.Fatalf("Notify invalid event returned error: %v", err)
+	}
 	if called != 0 {
 		t.Fatalf("expected no calls for invalid event")
 	}
 
 	// Valid event should trigger hook once.
-	_ = hooks.Notify(context.Background(), Event{
+	if err := hooks.Notify(context.Background(), Event{
 		Verb:       " update ",
 		ObjectType: " widget ",
 		ObjectID:   " 123 ",
-	})
+	}); err != nil {
+		t.Fatalf("Notify valid event returned error: %v", err)
+	}
 	if called != 1 {
 		t.Fatalf("expected hook to be called once, got %d", called)
 	}

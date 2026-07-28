@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,12 @@ func TestShellPageAssetsAddsDefaultsOnce(t *testing.T) {
 
 func TestShellAssetsHandlerServesEmbeddedRuntime(t *testing.T) {
 	handler := ShellAssetsHandler(DefaultShellAssetsPath)
-	req := httptest.NewRequest(http.MethodGet, DefaultShellAssetsPath+"shell.js", nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		DefaultShellAssetsPath+"shell.js",
+		nil,
+	)
 	resp := httptest.NewRecorder()
 	handler.ServeHTTP(resp, req)
 
@@ -40,7 +46,11 @@ func TestShellCSSUsesSemanticFallbacksAndPreservesDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open embedded shell CSS: %v", err)
 	}
-	defer file.Close()
+	t.Cleanup(func() {
+		if closeErr := file.Close(); closeErr != nil {
+			t.Errorf("close embedded shell CSS: %v", closeErr)
+		}
+	})
 	data, err := io.ReadAll(file)
 	if err != nil {
 		t.Fatalf("read embedded shell CSS: %v", err)

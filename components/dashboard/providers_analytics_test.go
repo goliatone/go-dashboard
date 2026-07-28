@@ -53,7 +53,7 @@ func TestCohortProviderReturnsRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	rows, _ := data["rows"].([]map[string]any)
+	rows := requireTestValue[[]map[string]any](t, data["rows"])
 	if len(rows) != 1 || rows[0]["label"] != "Week 1" {
 		t.Fatalf("expected mapped rows, got %#v", data["rows"])
 	}
@@ -86,16 +86,17 @@ func TestAlertProviderShapesSeries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
-	series, _ := data["series"].([]map[string]any)
+	series := requireTestValue[[]map[string]any](t, data["series"])
 	if len(series) != 1 || series[0]["day"] != "2024-11-10" {
 		t.Fatalf("unexpected series payload: %#v", data["series"])
 	}
-	counts, _ := series[0]["counts"].([]map[string]any)
-	if len(counts) != 1 || counts[0]["severity"] != "critical" || counts[0]["count"].(int) != 3 {
+	counts := requireTestValue[[]map[string]any](t, series[0]["counts"])
+	if len(counts) != 1 || counts[0]["severity"] != "critical" ||
+		requireTestValue[int](t, counts[0]["count"]) != 3 {
 		t.Fatalf("unexpected severity rows: %#v", counts)
 	}
-	severities, _ := data["severities"].([]map[string]any)
-	if len(severities) != 1 || severities[0]["count"].(int) != 5 {
+	severities := requireTestValue[[]map[string]any](t, data["severities"])
+	if len(severities) != 1 || requireTestValue[int](t, severities[0]["count"]) != 5 {
 		t.Fatalf("unexpected totals payload: %#v", severities)
 	}
 	if repo.query.Service != "api" || repo.query.LookbackDays != 10 || !reflect.DeepEqual(repo.query.Severities, []string{"critical"}) {

@@ -205,9 +205,24 @@ func TestThemeSelectionLegacyPayloadShapeRemainsCompatible(t *testing.T) {
 	if got := payload["css_vars_inline"]; got != "--color-primary: #111827;--dashboard-accent: #22d3ee;" {
 		t.Fatalf("unexpected deterministic inline projection: %#v", got)
 	}
-	vars, _ := payload["css_vars"].(map[string]string)
+	vars := requireTestValue[map[string]string](t, payload["css_vars"])
 	if vars["--color-primary"] != "#111827" {
 		t.Fatalf("pre-prefixed legacy token changed variable name: %#v", vars)
+	}
+}
+
+func TestThemeSelectionLegacyDashboardStylesTrackOnlyEmittedTokens(t *testing.T) {
+	selection := &ThemeSelection{Tokens: map[string]string{
+		"--dashboard-accent": "#22d3ee",
+		"color.focus.ring":   "#0ea5e9",
+		"dashboard-muted":    "url(https://example.test/image)",
+	}}
+	styles := selection.legacyDashboardStyles()
+	if !styles["accent"] {
+		t.Fatalf("pre-prefixed legacy accent lost its consumer: %#v", styles)
+	}
+	if styles["muted"] || styles["surface"] || styles["foreground"] {
+		t.Fatalf("invalid or absent legacy tokens activated declarations: %#v", styles)
 	}
 }
 
@@ -222,6 +237,32 @@ func TestConsumerDiagnosticsNeverConsumeInvalidSupportedTokens(t *testing.T) {
 	for _, diagnostic := range diagnostics {
 		if diagnostic.Status == TokenConsumed || diagnostic.Status == TokenUnused {
 			t.Fatalf("invalid token received consumption status: %+v", diagnostic)
+		}
+	}
+}
+
+func TestConsumerDiagnosticsKeepsIgnoredAliasUnused(t *testing.T) {
+	selection := &ThemeSelection{Tokens: map[string]string{
+		"surface":               "#f8fafc",
+		"color.surface.default": "#ffffff",
+	}}
+	diagnostics := selection.SemanticProjection().ConsumerDiagnostics(
+		"test.consumer",
+		"color.surface.default",
+	)
+	statuses := diagnosticStatuses(diagnostics)
+	if !slicesContain(statuses, "color.surface.default:consumed") {
+		t.Fatalf("canonical token was not consumed: %#v", statuses)
+	}
+	if !slicesContain(statuses, "surface:unused") ||
+		slicesContain(statuses, "surface:consumed") {
+		t.Fatalf("ignored alias received the wrong consumption status: %#v", statuses)
+	}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Token == "surface" &&
+			diagnostic.Status == TokenUnused &&
+			!strings.Contains(diagnostic.Reason, "canonical token takes precedence") {
+			t.Fatalf("ignored alias lost its precedence reason: %+v", diagnostic)
 		}
 	}
 }
@@ -298,14 +339,149 @@ func TestThemeSelectionSemanticDashboardOptInAndConsumption(t *testing.T) {
 		t.Fatalf("semantic diagnostics missing from payload: %#v", payload)
 	}
 	statuses := diagnosticStatuses(diagnostics)
-	if !slicesContain(statuses, "dashboard.card.background:consumed") {
-		t.Fatalf("package override was not reported consumed: %#v", statuses)
+	if !slicesContain(statuses, "dashboard.card.background:unused") {
+		t.Fatalf("inventory-free payload overclaimed package consumption: %#v", statuses)
 	}
 	if !slicesContain(statuses, "color.surface.raised:unused") {
 		t.Fatalf("shadowed portable fallback was not reported unused: %#v", statuses)
 	}
-	if !slicesContain(statuses, "color.focus.ring:consumed") {
-		t.Fatalf("focus state token was not reported consumed: %#v", statuses)
+	if !slicesContain(statuses, "color.focus.ring:unused") {
+		t.Fatalf("inventory-free payload overclaimed focus consumption: %#v", statuses)
+	}
+}
+
+func TestSemanticDashboardPlanUsesRenderedSurfaceInventory(t *testing.T) {
+	selection := &ThemeSelection{Tokens: map[string]string{
+		"dashboard.card.background": "#ffffff",
+		"dashboard.metric.label":    "#64748b",
+		"dashboard.metric.value":    "#111827",
+		"color.surface.default":     "#f8fafc",
+		"color.action.accent":       "#2563eb",
+	}}
+
+	empty := selection.SemanticDashboardPlan(DashboardSemanticUsage{
+		Dashboard:  true,
+		Header:     true,
+		Areas:      true,
+		EmptyState: true,
+	})
+	if empty.Styles.CardBackground || empty.Styles.MetricValue {
+		t.Fatalf("empty dashboard activated widget-only styles: %+v", empty.Styles)
+	}
+	if !empty.Styles.MetricLabel || !empty.Styles.EmptyState {
+		t.Fatalf("empty dashboard did not activate its rendered state consumer: %+v", empty.Styles)
+	}
+	emptyStatuses := diagnosticStatuses(empty.Diagnostics)
+	for _, token := range []string{
+		"dashboard.card.background:unused",
+		"dashboard.metric.label:consumed",
+		"dashboard.metric.value:unused",
+		"color.surface.default:unused",
+		"color.action.accent:unused",
+	} {
+		if !slicesContain(emptyStatuses, token) {
+			t.Fatalf("empty dashboard missing %q from %#v", token, emptyStatuses)
+		}
+	}
+
+	shell := selection.SemanticDashboardPlan(DashboardSemanticUsage{Shell: true})
+	if shell.Styles.Active() {
+		t.Fatalf("shell inventory activated stock dashboard styles: %+v", shell.Styles)
+	}
+	shellStatuses := diagnosticStatuses(shell.Diagnostics)
+	for _, token := range []string{
+		"dashboard.card.background:consumed",
+		"color.surface.default:consumed",
+		"color.action.accent:consumed",
+		"dashboard.metric.value:unused",
+	} {
+		if !slicesContain(shellStatuses, token) {
+			t.Fatalf("shell inventory missing %q from %#v", token, shellStatuses)
+		}
+	}
+
+	contradictory := selection.SemanticDashboardPlan(DashboardSemanticUsage{
+		Shell:     true,
+		Dashboard: true,
+		Widgets:   true,
+	})
+	if contradictory.Styles.Active() {
+		t.Fatalf("shell inventory did not take precedence over dashboard flags: %+v", contradictory.Styles)
+	}
+}
+
+func TestThemePayloadForPageDerivesRenderedSurfaceInventory(t *testing.T) {
+	selection := &ThemeSelection{Tokens: map[string]string{
+		"dashboard.card.background": "#ffffff",
+		"dashboard.metric.label":    "#64748b",
+		"color.action.accent":       "#2563eb",
+	}}
+
+	emptyPayload := themePayloadForPage(selection, Page{
+		Areas: []PageArea{{Slot: "main", Code: "admin.dashboard.main"}},
+	})
+	emptyStyles, ok := emptyPayload["semantic_styles"].(map[string]bool)
+	if !ok {
+		t.Fatalf("empty page semantic styles missing: %#v", emptyPayload)
+	}
+	if !emptyStyles["metric_label"] || !emptyStyles["empty_state"] ||
+		emptyStyles["card_background"] {
+		t.Fatalf("empty page derived the wrong semantic consumers: %#v", emptyStyles)
+	}
+	emptyDiagnostics, ok := emptyPayload["semantic_diagnostics"].([]TokenDiagnostic)
+	if !ok {
+		t.Fatalf("empty page semantic diagnostics missing: %#v", emptyPayload)
+	}
+	emptyStatuses := diagnosticStatuses(emptyDiagnostics)
+	if !slicesContain(emptyStatuses, "dashboard.metric.label:consumed") ||
+		!slicesContain(emptyStatuses, "dashboard.card.background:unused") {
+		t.Fatalf("empty page diagnostics do not match rendered output: %#v", emptyStatuses)
+	}
+
+	shellPayload := themePayloadForPage(selection, Page{Shell: &Shell{}})
+	if _, enabled := shellPayload["semantic_enabled"]; enabled {
+		t.Fatalf("shell page activated the stock dashboard stylesheet: %#v", shellPayload)
+	}
+	shellDiagnostics, ok := shellPayload["semantic_diagnostics"].([]TokenDiagnostic)
+	if !ok {
+		t.Fatalf("shell page semantic diagnostics missing: %#v", shellPayload)
+	}
+	shellStatuses := diagnosticStatuses(shellDiagnostics)
+	if !slicesContain(shellStatuses, "dashboard.card.background:consumed") ||
+		!slicesContain(shellStatuses, "color.action.accent:consumed") ||
+		!slicesContain(shellStatuses, "dashboard.metric.label:consumed") {
+		t.Fatalf("shell page diagnostics do not match shell CSS: %#v", shellStatuses)
+	}
+
+	raw, err := json.Marshal(Page{
+		Shell: &Shell{
+			SurfaceID: "theme-test",
+			Regions: []ShellRegion{{
+				ID:        "main",
+				Role:      ShellRegionRoleMain,
+				Placement: ShellRegionPlacementMain,
+			}},
+		},
+		Theme: selection,
+	})
+	if err != nil {
+		t.Fatalf("marshal typed shell page: %v", err)
+	}
+	var typedPayload struct {
+		Theme struct {
+			SemanticEnabled     bool              `json:"semantic_enabled"`
+			SemanticDiagnostics []TokenDiagnostic `json:"semantic_diagnostics"`
+		} `json:"theme"`
+	}
+	if err := json.Unmarshal(raw, &typedPayload); err != nil {
+		t.Fatalf("decode typed shell page: %v", err)
+	}
+	if typedPayload.Theme.SemanticEnabled {
+		t.Fatalf("typed shell page activated stock dashboard styles: %s", raw)
+	}
+	typedStatuses := diagnosticStatuses(typedPayload.Theme.SemanticDiagnostics)
+	if !slicesContain(typedStatuses, "color.action.accent:consumed") {
+		t.Fatalf("typed shell page lost render-aware diagnostics: %#v", typedStatuses)
 	}
 }
 

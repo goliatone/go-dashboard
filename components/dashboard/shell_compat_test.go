@@ -48,7 +48,7 @@ func TestShellContractRepresentsTwoRailWorkbench(t *testing.T) {
 		t.Fatalf("expected workspace focus target, got %+v", normalized.FocusTargets)
 	}
 	payload := normalized.legacyPayload()
-	regions := payload["region_by_id"].(map[string]any)
+	regions := requireTestValue[map[string]any](t, payload["region_by_id"])
 	if _, ok := regions["list"]; !ok {
 		t.Fatalf("expected list rail in payload")
 	}

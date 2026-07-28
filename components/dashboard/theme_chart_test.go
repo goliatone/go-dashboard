@@ -116,3 +116,39 @@ func TestSemanticChartPaletteKeepsInvalidChartDiagnosticsWithoutActivatingVisual
 		t.Fatalf("invalid chart diagnostic missing: %+v", palette.Diagnostics)
 	}
 }
+
+func TestSemanticChartPaletteDiagnosticsFollowConcreteChartType(t *testing.T) {
+	selection := &ThemeSelection{Tokens: map[string]string{
+		"chart.series.1":        "#2563eb",
+		"chart.axis":            "#64748b",
+		"chart.grid":            "#cbd5e1",
+		"chart.tooltip-surface": "#ffffff",
+	}}
+
+	for _, chartType := range []string{"pie", "gauge"} {
+		t.Run(chartType, func(t *testing.T) {
+			palette := selection.semanticChartPaletteFor(chartType)
+			if palette.Axis != "" || palette.Grid != "" {
+				t.Fatalf("%s palette retained presentation it cannot apply: %+v", chartType, palette)
+			}
+			statuses := diagnosticStatuses(palette.Diagnostics)
+			for _, expected := range []string{
+				"chart.series.1:consumed",
+				"chart.tooltip-surface:consumed",
+				"chart.axis:unused",
+				"chart.grid:unused",
+			} {
+				if !slicesContain(statuses, expected) {
+					t.Fatalf("%s palette missing %q from %#v", chartType, expected, statuses)
+				}
+			}
+		})
+	}
+
+	statuses := diagnosticStatuses(selection.semanticChartPaletteFor("bar").Diagnostics)
+	for _, expected := range []string{"chart.axis:consumed", "chart.grid:consumed"} {
+		if !slicesContain(statuses, expected) {
+			t.Fatalf("bar palette missing %q from %#v", expected, statuses)
+		}
+	}
+}

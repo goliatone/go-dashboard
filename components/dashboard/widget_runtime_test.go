@@ -113,10 +113,11 @@ func TestConfigureLayoutDefersWidgetSerializationUntilPageAssembly(t *testing.T)
 	if atomic.LoadInt32(&serializeCalls) != 1 {
 		t.Fatalf("expected widget serialization at page assembly, got %d calls", serializeCalls)
 	}
-	areas := payload["areas"].(map[string]any)
-	main := areas["main"].(map[string]any)
-	widgets := main["widgets"].([]map[string]any)
-	if widgets[0]["data"].(map[string]any)["value"] != 42 {
+	areas := requireTestValue[map[string]any](t, payload["areas"])
+	main := requireTestValue[map[string]any](t, areas["main"])
+	widgets := requireTestValue[[]map[string]any](t, main["widgets"])
+	data := requireTestValue[map[string]any](t, widgets[0]["data"])
+	if data["value"] != 42 {
 		t.Fatalf("expected serialized widget payload available at page assembly, got %#v", widgets[0]["data"])
 	}
 }

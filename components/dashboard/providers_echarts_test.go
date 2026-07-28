@@ -2,7 +2,6 @@ package dashboard
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -268,6 +267,32 @@ func TestEChartsProviderAppliesSemanticPaletteToPieData(t *testing.T) {
 	assert.Contains(t, markup, `"itemstyle":{"color":"#f59e0b"}`)
 }
 
+func TestEChartsProviderReportsOnlyPresentationAppliedByChartType(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("pie")
+	ctx := sampleChartContext("admin.widget.pie_chart", map[string]any{
+		"title": "Semantic Pie Diagnostics",
+		"series": []map[string]any{{
+			"name": "Categories",
+			"data": []map[string]any{{"name": "A", "value": 1}},
+		}},
+	})
+	ctx.Theme = &ThemeSelection{Tokens: map[string]string{
+		"chart.series.1":        "#2563eb",
+		"chart.axis":            "#64748b",
+		"chart.grid":            "#cbd5e1",
+		"chart.tooltip-surface": "#ffffff",
+	}}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+	statuses := serializedThemeDiagnosticStatuses(data["theme_diagnostics"])
+	assert.Contains(t, statuses, "chart.series.1:consumed")
+	assert.Contains(t, statuses, "chart.tooltip-surface:consumed")
+	assert.Contains(t, statuses, "chart.axis:unused")
+	assert.Contains(t, statuses, "chart.grid:unused")
+}
+
 func TestEChartsProviderExposesInvalidChartDiagnosticsWithoutChangingPalette(t *testing.T) {
 	t.Parallel()
 	provider := NewEChartsProvider("bar")
@@ -303,7 +328,7 @@ func TestEChartsProviderSanitizesStrings(t *testing.T) {
 	data, err := provider.Fetch(context.Background(), ctx)
 	require.NoError(t, err)
 
-	title := data["title"].(string)
+	title := requireTestValue[string](t, data["title"])
 	assert.NotContains(t, title, "<script>")
 	assert.Contains(t, title, "&lt;script&gt;")
 
@@ -403,16 +428,22 @@ func sampleChartContext(definition string, cfg map[string]any) WidgetContext {
 }
 
 func html(data WidgetData) string {
-	val, _ := data["chart_html"].(string)
+	val, valid := data["chart_html"].(string)
+	if !valid {
+		return ""
+	}
 	return strings.ToLower(val)
 }
 
 func jsAssets(data WidgetData) []string {
-	raw, _ := data["js_assets"].([]string)
-	if raw != nil {
+	raw, valid := data["js_assets"].([]string)
+	if valid {
 		return raw
 	}
-	values, _ := data["js_assets"].([]any)
+	values, valid := data["js_assets"].([]any)
+	if !valid {
+		return nil
+	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
 		if s, ok := value.(string); ok {
@@ -423,21 +454,50 @@ func jsAssets(data WidgetData) []string {
 }
 
 func serializedThemeDiagnosticStatuses(value any) []string {
-	if diagnostics, ok := value.([]TokenDiagnostic); ok {
+	if diagnostics, valid := value.([]TokenDiagnostic); valid {
 		return diagnosticStatuses(diagnostics)
 	}
-	data, _ := json.Marshal(value)
-	var raw []map[string]any
-	_ = json.Unmarshal(data, &raw)
-	out := make([]string, 0, len(raw))
-	for _, item := range raw {
-		token, _ := item["token"].(string)
-		status, _ := item["status"].(string)
+	items := diagnosticMaps(value)
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		token, tokenValid := item["token"].(string)
+		status, statusValid := diagnosticStatusString(item["status"])
+		if !tokenValid || !statusValid {
+			continue
+		}
 		if token != "" && status != "" {
 			out = append(out, token+":"+status)
 		}
 	}
 	return out
+}
+
+func diagnosticStatusString(value any) (string, bool) {
+	switch status := value.(type) {
+	case string:
+		return status, true
+	case TokenStatus:
+		return string(status), true
+	default:
+		return "", false
+	}
+}
+
+func diagnosticMaps(value any) []map[string]any {
+	if items, valid := value.([]map[string]any); valid {
+		return items
+	}
+	values, valid := value.([]any)
+	if !valid {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(values))
+	for _, value := range values {
+		if item, itemValid := value.(map[string]any); itemValid {
+			items = append(items, item)
+		}
+	}
+	return items
 }
 
 type countingCache struct {

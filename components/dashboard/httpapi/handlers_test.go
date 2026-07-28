@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -175,7 +176,7 @@ func TestPreferencesHelperUsesSharedExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Preferences returned error: %v", err)
 	}
-	if reply.StatusCode != 200 {
+	if reply.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", reply.StatusCode)
 	}
 	payload, ok := reply.Payload.(map[string]string)
