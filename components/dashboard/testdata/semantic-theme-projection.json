@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "empty-legacy",
+      "tokens": {},
+      "variables": {},
+      "inline": "",
+      "statuses": []
+    },
+    {
+      "name": "quickstart-legacy",
+      "tokens": {
+        "accent": "#f59e0b",
+        "primary": "#2563eb",
+        "sidebar-brand-align": "center",
+        "sidebar-brand-collapsed-size": "2rem",
+        "sidebar-brand-max-height": "2rem",
+        "sidebar-brand-max-width": "10rem",
+        "sidebar-footer-height": "3rem",
+        "sidebar-gap-sections": "1rem",
+        "sidebar-icon-size": "1.25rem",
+        "sidebar-item-height": "2.5rem",
+        "sidebar-padding-x": "1rem",
+        "sidebar-padding-y": "1rem",
+        "sidebar-title-height": "3rem",
+        "sidebar-width": "16rem",
+        "surface": "#ffffff"
+      },
+      "variables": {
+        "--color-action-accent": "#f59e0b",
+        "--color-action-primary": "#2563eb",
+        "--color-surface-default": "#ffffff",
+        "--sidebar-brand-align": "center",
+        "--sidebar-brand-collapsed-size": "2rem",
+        "--sidebar-brand-max-height": "2rem",
+        "--sidebar-brand-max-width": "10rem",
+        "--sidebar-footer-height": "3rem",
+        "--sidebar-gap-sections": "1rem",
+        "--sidebar-icon-size": "1.25rem",
+        "--sidebar-item-height": "2.5rem",
+        "--sidebar-padding-x": "1rem",
+        "--sidebar-padding-y": "1rem",
+        "--sidebar-title-height": "3rem",
+        "--sidebar-width": "16rem"
+      },
+      "inline": "--color-action-accent:#f59e0b;--color-action-primary:#2563eb;--sidebar-brand-align:center;--sidebar-brand-collapsed-size:2rem;--sidebar-brand-max-height:2rem;--sidebar-brand-max-width:10rem;--sidebar-footer-height:3rem;--sidebar-gap-sections:1rem;--sidebar-icon-size:1.25rem;--sidebar-item-height:2.5rem;--sidebar-padding-x:1rem;--sidebar-padding-y:1rem;--sidebar-title-height:3rem;--sidebar-width:16rem;--color-surface-default:#ffffff;",
+      "statuses": [
+        "accent:resolved",
+        "accent:supported",
+        "primary:resolved",
+        "primary:supported",
+        "sidebar-brand-align:resolved",
+        "sidebar-brand-align:unsupported",
+        "sidebar-brand-collapsed-size:resolved",
+        "sidebar-brand-collapsed-size:unsupported",
+        "sidebar-brand-max-height:resolved",
+        "sidebar-brand-max-height:unsupported",
+        "sidebar-brand-max-width:resolved",
+        "sidebar-brand-max-width:unsupported",
+        "sidebar-footer-height:resolved",
+        "sidebar-footer-height:unsupported",
+        "sidebar-gap-sections:resolved",
+        "sidebar-gap-sections:unsupported",
+        "sidebar-icon-size:resolved",
+        "sidebar-icon-size:unsupported",
+        "sidebar-item-height:resolved",
+        "sidebar-item-height:unsupported",
+        "sidebar-padding-x:resolved",
+        "sidebar-padding-x:unsupported",
+        "sidebar-padding-y:resolved",
+        "sidebar-padding-y:unsupported",
+        "sidebar-title-height:resolved",
+        "sidebar-title-height:unsupported",
+        "sidebar-width:resolved",
+        "sidebar-width:unsupported",
+        "surface:resolved",
+        "surface:supported"
+      ]
+    },
+    {
+      "name": "aligned-base",
+      "tokens": {
+        "admin.shell.background": "#f8fafc",
+        "color.action.primary": "#3366ff",
+        "dashboard.card.background": "#ffffff",
+        "datagrid.header.background": "#f1f5f9",
+        "font.family.body": "\"Inter\", sans-serif",
+        "font.weight.body": "400",
+        "form.control.background": "#ffffff",
+        "letter.spacing.body": "0.01em",
+        "line.height.body": "1.5",
+        "motion.duration.fast": "120ms",
+        "motion.easing.standard": "cubic-bezier(0.2, 0, 0, 1)",
+        "radius.control": "0.375rem",
+        "shadow.surface": "0 1px 2px rgba(0, 0, 0, 0.08)"
+      },
+      "variables": {
+        "--admin-shell-background": "#f8fafc",
+        "--color-action-primary": "#3366ff",
+        "--dashboard-card-background": "#ffffff",
+        "--datagrid-header-background": "#f1f5f9",
+        "--font-family-body": "\"Inter\", sans-serif",
+        "--font-weight-body": "400",
+        "--form-control-background": "#ffffff",
+        "--letter-spacing-body": "0.01em",
+        "--line-height-body": "1.5",
+        "--motion-duration-fast": "120ms",
+        "--motion-easing-standard": "cubic-bezier(0.2, 0, 0, 1)",
+        "--radius-control": "0.375rem",
+        "--shadow-surface": "0 1px 2px rgba(0, 0, 0, 0.08)"
+      },
+      "inline": "--admin-shell-background:#f8fafc;--color-action-primary:#3366ff;--dashboard-card-background:#ffffff;--datagrid-header-background:#f1f5f9;--font-family-body:\"Inter\", sans-serif;--font-weight-body:400;--form-control-background:#ffffff;--letter-spacing-body:0.01em;--line-height-body:1.5;--motion-duration-fast:120ms;--motion-easing-standard:cubic-bezier(0.2, 0, 0, 1);--radius-control:0.375rem;--shadow-surface:0 1px 2px rgba(0, 0, 0, 0.08);",
+      "statuses": [
+        "admin.shell.background:resolved",
+        "admin.shell.background:unsupported",
+        "color.action.primary:resolved",
+        "color.action.primary:supported",
+        "dashboard.card.background:resolved",
+        "dashboard.card.background:unsupported",
+        "datagrid.header.background:resolved",
+        "datagrid.header.background:unsupported",
+        "font.family.body:resolved",
+        "font.family.body:supported",
+        "font.weight.body:resolved",
+        "font.weight.body:supported",
+        "form.control.background:resolved",
+        "form.control.background:unsupported",
+        "letter.spacing.body:resolved",
+        "letter.spacing.body:supported",
+        "line.height.body:resolved",
+        "line.height.body:supported",
+        "motion.duration.fast:resolved",
+        "motion.duration.fast:supported",
+        "motion.easing.standard:resolved",
+        "motion.easing.standard:supported",
+        "radius.control:resolved",
+        "radius.control:supported",
+        "shadow.surface:resolved",
+        "shadow.surface:supported"
+      ]
+    },
+    {
+      "name": "aligned-variant",
+      "tokens": {
+        "color.action.primary": "#2563eb",
+        "color.surface.default": "#ffffff"
+      },
+      "variant_tokens": {
+        "color.action.primary": "#93c5fd"
+      },
+      "variables": {
+        "--color-action-primary": "#93c5fd",
+        "--color-surface-default": "#ffffff"
+      },
+      "inline": "--color-action-primary:#93c5fd;--color-surface-default:#ffffff;",
+      "statuses": [
+        "color.action.primary:resolved",
+        "color.action.primary:supported",
+        "color.surface.default:resolved",
+        "color.surface.default:supported"
+      ]
+    },
+    {
+      "name": "canonical-over-alias",
+      "tokens": {
+        "color.action.primary": "#0000ff",
+        "primary": "#ff0000"
+      },
+      "variables": {
+        "--color-action-primary": "#0000ff"
+      },
+      "inline": "--color-action-primary:#0000ff;",
+      "statuses": [
+        "color.action.primary:resolved",
+        "color.action.primary:supported",
+        "primary:resolved",
+        "primary:supported"
+      ]
+    },
+    {
+      "name": "invalid-projection",
+      "tokens": {
+        "bad;name": "#ffffff",
+        "color.action.primary": "url(https://example.com/color)"
+      },
+      "variables": {},
+      "inline": "",
+      "statuses": [
+        "bad;name:invalid",
+        "bad;name:unsupported",
+        "color.action.primary:invalid",
+        "color.action.primary:supported"
+      ]
+    },
+    {
+      "name": "unknown-safe-token",
+      "tokens": {
+        "custom.brand": "calc(100% - 1rem)"
+      },
+      "variables": {
+        "--custom-brand": "calc(100% - 1rem)"
+      },
+      "inline": "--custom-brand:calc(100% - 1rem);",
+      "statuses": [
+        "custom.brand:resolved",
+        "custom.brand:unsupported"
+      ]
+    },
+    {
+      "name": "partial-chart-palette",
+      "tokens": {
+        "chart.series.1": "#2563eb",
+        "chart.series.3": "#f59e0b"
+      },
+      "variables": {
+        "--chart-series-1": "#2563eb",
+        "--chart-series-3": "#f59e0b"
+      },
+      "inline": "--chart-series-1:#2563eb;--chart-series-3:#f59e0b;",
+      "statuses": [
+        "chart.series.1:resolved",
+        "chart.series.1:supported",
+        "chart.series.3:resolved",
+        "chart.series.3:supported"
+      ],
+      "current_defaults": [
+        "#5470c6",
+        "#91cc75",
+        "#fac858",
+        "#ee6666",
+        "#73c0de",
+        "#3ba272",
+        "#fc8452",
+        "#9a60b4"
+      ],
+      "expected_palette": [
+        "#2563eb",
+        "#2563eb",
+        "#f59e0b",
+        "#2563eb",
+        "#f59e0b",
+        "#2563eb",
+        "#f59e0b",
+        "#2563eb"
+      ]
+    }
+  ]
+}
