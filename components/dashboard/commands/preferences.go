@@ -79,10 +79,7 @@ func convertLayoutRows(input map[string][]LayoutRowInput) map[string][]dashboard
 				if widget.ID == "" {
 					continue
 				}
-				slots = append(slots, dashboard.WidgetSlot{
-					ID:    widget.ID,
-					Width: widget.Width,
-				})
+				slots = append(slots, dashboard.WidgetSlot(widget))
 			}
 			if len(slots) == 0 {
 				continue

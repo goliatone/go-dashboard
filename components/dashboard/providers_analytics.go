@@ -146,11 +146,7 @@ func NewCohortAnalyticsProvider(repo CohortReportRepository) Provider {
 		BuildView: func(_ context.Context, report CohortReport, _ WidgetViewContext[CohortQuery]) (JSONViewModel[cohortView], error) {
 			rows := make([]cohortRowView, 0, len(report.Rows))
 			for _, row := range report.Rows {
-				rows = append(rows, cohortRowView{
-					Label:     row.Label,
-					Size:      row.Size,
-					Retention: row.Retention,
-				})
+				rows = append(rows, cohortRowView(row))
 			}
 			return JSONViewModel[cohortView]{
 				Value: cohortView{

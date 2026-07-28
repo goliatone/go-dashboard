@@ -4,79 +4,127 @@
 {% if theme and theme.css_vars_inline %}
 <style>
 :root { {{ theme.css_vars_inline|safe }} }
+{% if theme.legacy_styles.surface or theme.legacy_styles.foreground %}
 .dashboard {
+  {% if theme.legacy_styles.surface %}
   background: var(--dashboard-surface, inherit);
+  {% endif %}
+  {% if theme.legacy_styles.foreground %}
   color: var(--dashboard-foreground, inherit);
+  {% endif %}
 }
+{% endif %}
+{% if theme.legacy_styles.accent %}
 .dashboard__header h1 {
   color: var(--dashboard-accent, inherit);
 }
+{% endif %}
+{% if theme.legacy_styles.muted %}
 .dashboard__header p {
   color: var(--dashboard-muted, inherit);
 }
+{% endif %}
 </style>
 {% endif %}
 {% if theme and theme.semantic_enabled %}
 <style data-dashboard-semantic-theme>
+{% if theme.semantic_styles.surface or theme.semantic_styles.text or theme.semantic_styles.body_font or theme.semantic_styles.motion %}
 .dashboard[data-dashboard-semantic-theme] {
+  {% if theme.semantic_styles.surface %}
   background: var(--dashboard-surface, var(--color-surface-canvas, inherit));
+  {% endif %}
+  {% if theme.semantic_styles.text %}
   color: var(--color-text-primary, var(--dashboard-foreground, inherit));
+  {% endif %}
+  {% if theme.semantic_styles.body_font %}
   font-family: var(--font-family-body, inherit);
+  {% endif %}
+  {% if theme.semantic_styles.motion %}
   transition:
     background-color var(--motion-duration-fast, 0s) var(--motion-easing-standard, ease),
     color var(--motion-duration-fast, 0s) var(--motion-easing-standard, ease);
+  {% endif %}
 }
+{% endif %}
+{% if theme.semantic_styles.text or theme.semantic_styles.heading_font %}
 .dashboard[data-dashboard-semantic-theme] .dashboard__header h1 {
+  {% if theme.semantic_styles.text %}
   color: var(--color-text-primary, var(--dashboard-accent, inherit));
+  {% endif %}
+  {% if theme.semantic_styles.heading_font %}
   font-family: var(--font-family-heading, var(--font-family-body, inherit));
+  {% endif %}
 }
+{% endif %}
+{% if theme.semantic_styles.metric_label %}
 .dashboard[data-dashboard-semantic-theme] .dashboard__header p,
 .dashboard[data-dashboard-semantic-theme] .widget__meta,
 .dashboard[data-dashboard-semantic-theme] .widget__subtitle,
 .dashboard[data-dashboard-semantic-theme] .widget small {
   color: var(--dashboard-metric-label, var(--color-text-secondary, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.card_background or theme.semantic_styles.card_border or theme.semantic_styles.card_radius or theme.semantic_styles.card_shadow %}
 .dashboard[data-dashboard-semantic-theme] .dashboard-widget {
+  {% if theme.semantic_styles.card_background %}
   background: var(--dashboard-card-background, var(--color-surface-raised, transparent));
+  {% endif %}
+  {% if theme.semantic_styles.card_border %}
   border-color: var(--dashboard-card-border, var(--color-border-default, currentColor));
+  {% endif %}
+  {% if theme.semantic_styles.card_radius %}
   border-radius: var(--dashboard-card-radius, var(--radius-surface, inherit));
+  {% endif %}
+  {% if theme.semantic_styles.card_shadow %}
   box-shadow: var(--dashboard-card-shadow, var(--shadow-surface, none));
+  {% endif %}
 }
+{% endif %}
+{% if theme.semantic_styles.metric_value %}
 .dashboard[data-dashboard-semantic-theme] .widget__stat {
   color: var(--dashboard-metric-value, var(--color-text-primary, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.trend_positive %}
 .dashboard[data-dashboard-semantic-theme] [data-dashboard-trend="positive"],
 .dashboard[data-dashboard-semantic-theme] .status--ok,
 .dashboard[data-dashboard-semantic-theme] .status--healthy {
   color: var(--dashboard-metric-trend-positive, var(--color-status-success, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.trend_negative %}
 .dashboard[data-dashboard-semantic-theme] [data-dashboard-trend="negative"],
 .dashboard[data-dashboard-semantic-theme] .status--error,
 .dashboard[data-dashboard-semantic-theme] .status--failed {
   color: var(--dashboard-metric-trend-negative, var(--color-status-danger, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.focus %}
 .dashboard[data-dashboard-semantic-theme] .dashboard-widget:focus-within {
   outline: 2px solid var(--color-focus-ring, currentColor);
   outline-offset: 2px;
 }
-.dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="loading"] {
-  cursor: progress;
-  opacity: 0.72;
-}
+{% endif %}
+{% if theme.semantic_styles.empty_state %}
 .dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="empty"],
 .dashboard[data-dashboard-semantic-theme] .dashboard-area--empty {
   color: var(--dashboard-metric-label, var(--color-text-secondary, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.error_state %}
 .dashboard[data-dashboard-semantic-theme] .dashboard-widget[data-dashboard-state="error"] {
   border-color: var(--dashboard-metric-trend-negative, var(--color-status-danger, currentColor));
   color: var(--dashboard-metric-trend-negative, var(--color-status-danger, inherit));
 }
+{% endif %}
+{% if theme.semantic_styles.gap %}
 @media (max-width: 760px) {
   .dashboard[data-dashboard-semantic-theme] .dashboard__body,
   .dashboard[data-dashboard-semantic-theme] .dashboard-area {
     gap: var(--space-stack, inherit);
   }
 }
+{% endif %}
 </style>
 {% endif %}
 <div class="dashboard"

@@ -67,8 +67,8 @@ func (v *JSONSchemaValidator) schemaFor(def WidgetDefinition) (*jsonschema.Schem
 	}
 	compiler := jsonschema.NewCompiler()
 	name := def.Code + ".json"
-	if err := compiler.AddResource(name, bytes.NewReader(data)); err != nil {
-		return nil, fmt.Errorf("dashboard: load schema %s: %w", def.Code, err)
+	if addErr := compiler.AddResource(name, bytes.NewReader(data)); addErr != nil {
+		return nil, fmt.Errorf("dashboard: load schema %s: %w", def.Code, addErr)
 	}
 	compiled, err := compiler.Compile(name)
 	if err != nil {

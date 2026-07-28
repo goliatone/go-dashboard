@@ -170,7 +170,7 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 	renderCtx := chartRenderContext{
 		Viewer:  meta.Viewer,
 		Theme:   p.resolveTheme(meta.Viewer, meta.Theme),
-		Palette: meta.Theme.SemanticChartPalette(),
+		Palette: meta.Theme.semanticChartPaletteFor(p.chartType),
 	}
 	if override := strings.TrimSpace(stringValue(cfg["theme"], "")); override != "" {
 		renderCtx.Theme = override
@@ -187,8 +187,24 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		chartSubtitle = ""
 	}
 
+	payload, err := p.renderPayload(meta, cfg, chartTitle, chartSubtitle, xAxis, series, renderCtx)
+	if err != nil {
+		return echartsWidgetView{}, err
+	}
+	return p.buildView(meta, cfg, displayTitle, displaySubtitle, renderCtx, payload), nil
+}
+
+func (p *EChartsProvider) renderPayload(
+	meta WidgetContext,
+	cfg map[string]any,
+	title string,
+	subtitle string,
+	xAxis []string,
+	series []ChartSeries,
+	renderCtx chartRenderContext,
+) (chartRenderPayload, error) {
 	renderFn := func() (string, error) {
-		payload, err := p.render(chartTitle, chartSubtitle, xAxis, series, renderCtx)
+		payload, err := p.render(title, subtitle, xAxis, series, renderCtx)
 		if err != nil {
 			return "", err
 		}
@@ -219,20 +235,25 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		cached, err = renderFn()
 	}
 	if err != nil {
-		return echartsWidgetView{}, err
+		return chartRenderPayload{}, err
 	}
 
-	payload, err := decodeChartRenderPayload(cached)
-	if err != nil {
-		return echartsWidgetView{}, err
-	}
-	html := applySecurityDecorators(payload.Markup, nonceFrom(meta.Options))
+	return decodeChartRenderPayload(cached)
+}
 
+func (p *EChartsProvider) buildView(
+	meta WidgetContext,
+	cfg map[string]any,
+	title string,
+	subtitle string,
+	renderCtx chartRenderContext,
+	payload chartRenderPayload,
+) echartsWidgetView {
 	view := echartsWidgetView{
-		ChartHTML: html,
+		ChartHTML: applySecurityDecorators(payload.Markup, nonceFrom(meta.Options)),
 		ChartType: p.chartType,
-		Title:     displayTitle,
-		Subtitle:  displaySubtitle,
+		Title:     title,
+		Subtitle:  subtitle,
 		Theme:     renderCtx.Theme,
 		JSAssets:  append([]string{}, payload.JS...),
 		CSSAssets: append([]string{}, payload.CSS...),
@@ -251,7 +272,7 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		}
 	}
 
-	return view, nil
+	return view
 }
 
 type echartsRuntime struct {
@@ -546,14 +567,29 @@ type semanticChartVisitor struct {
 	tooltipText string
 }
 
-func (visitor semanticChartVisitor) VisitTooltipOpt(tooltip opts.Tooltip) interface{} {
-	return struct {
-		opts.Tooltip
-		TextStyle map[string]string `json:"textStyle,omitempty"`
-	}{
-		Tooltip:   tooltip,
-		TextStyle: map[string]string{"color": visitor.tooltipText},
+func (visitor semanticChartVisitor) VisitTooltipOpt(tooltip opts.Tooltip) any {
+	return semanticTooltip{
+		tooltip:   tooltip,
+		textStyle: map[string]string{"color": visitor.tooltipText},
 	}
+}
+
+type semanticTooltip struct {
+	tooltip   opts.Tooltip
+	textStyle map[string]string
+}
+
+func (tooltip semanticTooltip) MarshalJSON() ([]byte, error) {
+	raw, err := json.Marshal(tooltip.tooltip)
+	if err != nil {
+		return nil, err
+	}
+	options := map[string]any{}
+	if err := json.Unmarshal(raw, &options); err != nil {
+		return nil, err
+	}
+	options["textStyle"] = tooltip.textStyle
+	return json.Marshal(options)
 }
 
 func applySemanticChartVisitor(target chartVisitorTarget, palette SemanticChartPalette) {

@@ -169,6 +169,9 @@ func themePayload(selection *ThemeSelection) map[string]any {
 	if inline := selection.CSSVariablesInline(); inline != "" {
 		payload["css_vars_inline"] = inline
 	}
+	if legacyStyles := selection.legacyDashboardStyles(); len(legacyStyles) > 0 {
+		payload["legacy_styles"] = legacyStyles
+	}
 	if selection.SemanticDashboardEnabled() {
 		payload["semantic_enabled"] = true
 		payload["semantic_diagnostics"] = selection.DashboardConsumerDiagnostics()
@@ -184,6 +187,49 @@ func themePayload(selection *ThemeSelection) map[string]any {
 	}
 	if selection.ChartTheme != "" {
 		payload["chart_theme"] = selection.ChartTheme
+	}
+	return payload
+}
+
+func (selection *ThemeSelection) legacyDashboardStyles() map[string]bool {
+	if selection == nil {
+		return nil
+	}
+	projection := selection.SemanticProjection()
+	styles := map[string]bool{}
+	for key, tokens := range map[string][]string{
+		"surface":    {"dashboard-surface", "--dashboard-surface"},
+		"foreground": {"dashboard-foreground", "--dashboard-foreground"},
+		"accent":     {"dashboard-accent", "--dashboard-accent"},
+		"muted":      {"dashboard-muted", "--dashboard-muted"},
+	} {
+		for _, token := range tokens {
+			if projection.emitted[token] {
+				styles[key] = true
+				break
+			}
+		}
+	}
+	return styles
+}
+
+func themePayloadForPage(selection *ThemeSelection, page Page) map[string]any {
+	payload := themePayload(selection)
+	if payload == nil {
+		return nil
+	}
+	delete(payload, "semantic_enabled")
+	delete(payload, "semantic_styles")
+
+	plan := selection.SemanticDashboardPlan(dashboardSemanticUsage(page))
+	if plan.Styles.Active() {
+		payload["semantic_enabled"] = true
+		payload["semantic_styles"] = plan.Styles.payload()
+	}
+	if len(plan.Diagnostics) > 0 {
+		payload["semantic_diagnostics"] = plan.Diagnostics
+	} else {
+		delete(payload, "semantic_diagnostics")
 	}
 	return payload
 }

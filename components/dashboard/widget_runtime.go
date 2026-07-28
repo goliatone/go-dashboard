@@ -217,91 +217,124 @@ func normalizeStructuredValue(value any) (any, error) {
 }
 
 func normalizeStructuredReflectValue(value reflect.Value) (any, error) {
-	if !value.IsValid() {
-		return nil, nil
-	}
-	normalized, handled, err := normalizeCustomMarshaledValue(value)
+	value, normalized, handled, err := normalizeIndirectValue(value)
 	if handled || err != nil {
 		return normalized, err
 	}
-	for value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface {
-		if value.IsNil() {
-			return nil, nil
-		}
-		value = value.Elem()
-		normalized, handled, err = normalizeCustomMarshaledValue(value)
-		if handled || err != nil {
-			return normalized, err
-		}
-	}
-
 	switch value.Kind() {
 	case reflect.Struct:
-		result := map[string]any{}
-		typ := value.Type()
-		for i := 0; i < value.NumField(); i++ {
-			field := typ.Field(i)
-			if field.PkgPath != "" {
-				continue
-			}
-			name, omitEmpty, skip := jsonFieldName(field)
-			if skip {
-				continue
-			}
-			nested, err := normalizeStructuredReflectValue(value.Field(i))
-			if err != nil {
-				return nil, err
-			}
-			if omitEmpty && value.Field(i).IsZero() {
-				continue
-			}
-			result[name] = nested
-		}
-		return result, nil
+		return normalizeStructuredStruct(value)
 	case reflect.Map:
-		if value.IsNil() {
-			return nil, nil
-		}
-		result := map[string]any{}
-		iter := value.MapRange()
-		for iter.Next() {
-			nested, err := normalizeStructuredReflectValue(iter.Value())
-			if err != nil {
-				return nil, err
-			}
-			result[fmt.Sprint(iter.Key().Interface())] = nested
-		}
-		return result, nil
+		return normalizeStructuredMap(value)
 	case reflect.Slice, reflect.Array:
-		if value.Kind() == reflect.Slice && value.IsNil() {
-			return nil, nil
-		}
-		if value.Type().Elem().Kind() == reflect.Uint8 {
-			return value.Bytes(), nil
-		}
-		items := make([]any, value.Len())
-		allMaps := true
-		for i := 0; i < value.Len(); i++ {
-			nested, err := normalizeStructuredReflectValue(value.Index(i))
-			if err != nil {
-				return nil, err
-			}
-			items[i] = nested
-			if _, ok := items[i].(map[string]any); !ok {
-				allMaps = false
-			}
-		}
-		if allMaps {
-			out := make([]map[string]any, len(items))
-			for i := range items {
-				out[i] = items[i].(map[string]any)
-			}
-			return out, nil
-		}
-		return items, nil
+		return normalizeStructuredSequence(value)
 	default:
 		return value.Interface(), nil
 	}
+}
+
+func normalizeIndirectValue(value reflect.Value) (reflect.Value, any, bool, error) {
+	if !value.IsValid() {
+		return value, nil, true, nil
+	}
+	for {
+		normalized, handled, err := normalizeCustomMarshaledValue(value)
+		if handled || err != nil {
+			return value, normalized, true, err
+		}
+		if value.Kind() != reflect.Pointer && value.Kind() != reflect.Interface {
+			return value, nil, false, nil
+		}
+		if value.IsNil() {
+			return value, nil, true, nil
+		}
+		value = value.Elem()
+	}
+}
+
+func normalizeStructuredStruct(value reflect.Value) (any, error) {
+	result := map[string]any{}
+	typ := value.Type()
+	for i := 0; i < value.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+		name, omitEmpty, skip := jsonFieldName(field)
+		if skip {
+			continue
+		}
+		nested, err := normalizeStructuredReflectValue(value.Field(i))
+		if err != nil {
+			return nil, err
+		}
+		if omitEmpty && value.Field(i).IsZero() {
+			continue
+		}
+		result[name] = nested
+	}
+	return result, nil
+}
+
+func normalizeStructuredMap(value reflect.Value) (any, error) {
+	if value.IsNil() {
+		return nil, nil
+	}
+	result := map[string]any{}
+	iter := value.MapRange()
+	for iter.Next() {
+		nested, err := normalizeStructuredReflectValue(iter.Value())
+		if err != nil {
+			return nil, err
+		}
+		result[fmt.Sprint(iter.Key().Interface())] = nested
+	}
+	return result, nil
+}
+
+func normalizeStructuredSequence(value reflect.Value) (any, error) {
+	if value.Kind() == reflect.Slice && value.IsNil() {
+		return nil, nil
+	}
+	if value.Type().Elem().Kind() == reflect.Uint8 {
+		return value.Bytes(), nil
+	}
+	items, allMaps, err := normalizeSequenceItems(value)
+	if err != nil {
+		return nil, err
+	}
+	if !allMaps {
+		return items, nil
+	}
+	return normalizedMapSlice(items)
+}
+
+func normalizeSequenceItems(value reflect.Value) ([]any, bool, error) {
+	items := make([]any, value.Len())
+	allMaps := true
+	for i := 0; i < value.Len(); i++ {
+		nested, err := normalizeStructuredReflectValue(value.Index(i))
+		if err != nil {
+			return nil, false, err
+		}
+		items[i] = nested
+		if _, valid := nested.(map[string]any); !valid {
+			allMaps = false
+		}
+	}
+	return items, allMaps, nil
+}
+
+func normalizedMapSlice(items []any) ([]map[string]any, error) {
+	out := make([]map[string]any, len(items))
+	for i, item := range items {
+		mapped, valid := item.(map[string]any)
+		if !valid {
+			return nil, fmt.Errorf("dashboard: normalized sequence item %d must be an object, got %T", i, item)
+		}
+		out[i] = mapped
+	}
+	return out, nil
 }
 
 func normalizeCustomMarshaledValue(value reflect.Value) (any, bool, error) {
@@ -383,7 +416,11 @@ func normalizeSerializedValue(value any) any {
 		if allMaps {
 			out := make([]map[string]any, len(items))
 			for i := range items {
-				out[i] = items[i].(map[string]any)
+				mapped, valid := items[i].(map[string]any)
+				if !valid {
+					return items
+				}
+				out[i] = mapped
 			}
 			return out
 		}

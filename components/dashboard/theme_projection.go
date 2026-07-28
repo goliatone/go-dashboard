@@ -75,6 +75,7 @@ type CSSProjection struct {
 	Variables   map[string]string `json:"variables"`
 	Inline      string            `json:"inline"`
 	Diagnostics []TokenDiagnostic `json:"diagnostics,omitempty"`
+	emitted     map[string]bool
 }
 
 // TokenResolution reports which semantic token supplied a consumer value.
@@ -218,13 +219,14 @@ func (theme *ThemeSelection) SemanticDashboardEnabled() bool {
 	if theme == nil {
 		return false
 	}
+	projection := theme.SemanticProjection()
 	valid := map[string]bool{}
-	for _, diagnostic := range theme.SemanticProjection().Diagnostics {
+	for _, diagnostic := range projection.Diagnostics {
 		if diagnostic.Status == TokenResolved && diagnostic.Token == diagnostic.Canonical {
 			valid[diagnostic.Canonical] = true
 		}
 	}
-	for _, diagnostic := range theme.SemanticProjection().Diagnostics {
+	for _, diagnostic := range projection.Diagnostics {
 		if diagnostic.Status == TokenSupported &&
 			valid[diagnostic.Canonical] &&
 			dashboardChromeTokens[diagnostic.Canonical] {
@@ -234,23 +236,11 @@ func (theme *ThemeSelection) SemanticDashboardEnabled() bool {
 	return false
 }
 
-// DashboardConsumerDiagnostics reports the tokens actually selected by the
-// generic dashboard shell, widget chrome, metrics, and state consumers.
+// DashboardConsumerDiagnostics reports supported tokens conservatively when
+// no concrete page inventory is available. Call SemanticDashboardPlan when
+// render-aware consumption diagnostics are required.
 func (theme *ThemeSelection) DashboardConsumerDiagnostics() []TokenDiagnostic {
-	projection := theme.SemanticProjection()
-	if theme == nil || !theme.SemanticDashboardEnabled() {
-		return projection.Diagnostics
-	}
-	consumed := make([]string, 0, len(dashboardChromeFallbacks))
-	seen := map[string]bool{}
-	for _, fallback := range dashboardChromeFallbacks {
-		resolved := theme.ResolveSemanticToken(fallback.component, fallback.portable, "")
-		if resolved.Token != "" && !seen[resolved.Token] {
-			seen[resolved.Token] = true
-			consumed = append(consumed, resolved.Token)
-		}
-	}
-	return projection.ConsumerDiagnostics("go-dashboard.template", consumed...)
+	return theme.SemanticDashboardPlan(DashboardSemanticUsage{}).Diagnostics
 }
 
 var dashboardChromeFallbacks = []struct {
@@ -324,95 +314,167 @@ func (projection CSSProjection) ConsumerDiagnostics(consumer string, consumed ..
 	for _, token := range consumed {
 		consumedSet[token] = true
 	}
-	valid := make(map[string]bool, len(projection.Diagnostics))
+	resolved := make(map[string]bool, len(projection.Diagnostics))
 	for _, diagnostic := range projection.Diagnostics {
 		if diagnostic.Status == TokenResolved {
-			valid[diagnostic.Token] = true
+			resolved[diagnostic.Token] = true
 		}
 	}
 	for _, diagnostic := range projection.Diagnostics {
-		if diagnostic.Status != TokenSupported || !valid[diagnostic.Token] {
+		if diagnostic.Status != TokenSupported || !resolved[diagnostic.Token] {
 			continue
 		}
 		status := TokenUnused
-		if consumedSet[diagnostic.Canonical] || consumedSet[diagnostic.Token] {
+		if projection.emitted[diagnostic.Token] &&
+			(consumedSet[diagnostic.Canonical] || consumedSet[diagnostic.Token]) {
 			status = TokenConsumed
 		}
 		diagnostic.Status = status
 		diagnostic.Consumer = consumer
-		diagnostic.Reason = ""
 		out = append(out, diagnostic)
 	}
 	return out
 }
 
+func appendUniqueToken(tokens *[]string, seen map[string]bool, token string) {
+	if token == "" || seen[token] {
+		return
+	}
+	seen[token] = true
+	*tokens = append(*tokens, token)
+}
+
 // ProjectThemeCSSVariables mirrors the coordinated go-theme projection
 // contract without creating a runtime dependency on go-theme.
 func ProjectThemeCSSVariables(tokens map[string]string, options ProjectionOptions) CSSProjection {
-	out := CSSProjection{Variables: map[string]string{}}
+	projection := CSSProjection{
+		Variables: map[string]string{},
+		emitted:   map[string]bool{},
+	}
 	if len(tokens) == 0 {
-		return out
+		return projection
 	}
 
-	prefix := options.Prefix
-	if prefix == "" {
-		prefix = "--"
-	}
+	prefix := projectionPrefix(options.Prefix)
 	prefixValid := prefixPattern.MatchString(prefix)
 	keys := sortedTokenKeys(tokens)
+	canonicalPresent := canonicalTokenSet(keys, options.Profile)
+	entries := projectionEntries(tokens, keys, options.Profile, prefix, prefixValid, canonicalPresent)
 
-	canonicalPresent := make(map[string]bool, len(tokens))
+	invalidateProjectionCollisions(entries)
+	return emitCSSProjection(projection, entries, options.Profile, prefixValid)
+}
+
+func projectionPrefix(prefix string) string {
+	if prefix == "" {
+		return "--"
+	}
+	return prefix
+}
+
+func canonicalTokenSet(keys []string, profile *TokenProfile) map[string]bool {
+	present := make(map[string]bool, len(keys))
 	for _, token := range keys {
-		canonical, _ := canonicalToken(token, options.Profile)
+		canonical, _ := canonicalToken(token, profile)
 		if canonical == token {
-			canonicalPresent[canonical] = true
+			present[canonical] = true
 		}
 	}
+	return present
+}
 
+func projectionEntries(
+	tokens map[string]string,
+	keys []string,
+	profile *TokenProfile,
+	prefix string,
+	prefixValid bool,
+	canonicalPresent map[string]bool,
+) []projectionEntry {
 	entries := make([]projectionEntry, 0, len(keys))
 	for _, token := range keys {
-		value := strings.TrimSpace(tokens[token])
-		canonical, aliased := canonicalToken(token, options.Profile)
-		spec, supported := tokenSpec(canonical, options.Profile)
-		constraint := normalizeConstraint(spec.Constraint)
-		variable, nameValid := projectedVariable(canonical, spec.Variable, prefix, prefixValid)
-		tokenNameValid := tokenNamePattern.MatchString(token)
-		canonicalNameValid := tokenNamePattern.MatchString(canonical)
-		valueValid := validateTokenValue(canonical, value, constraint)
-		canonicalWins := aliased && canonicalPresent[canonical]
-
-		reason := ""
-		valid := prefixValid && tokenNameValid && canonicalNameValid && nameValid && valueValid
-		switch {
-		case !prefixValid:
-			reason = "invalid CSS variable prefix"
-		case !tokenNameValid:
-			reason = "invalid token name"
-		case !canonicalNameValid:
-			reason = "invalid canonical token name"
-		case !nameValid:
-			reason = "invalid CSS variable name"
-		case !valueValid:
-			reason = "invalid " + string(constraint) + " value"
-		case canonicalWins:
-			reason = "deprecated alias ignored because canonical token is present"
-		}
-
-		entries = append(entries, projectionEntry{
-			token:         token,
-			canonical:     canonical,
-			value:         value,
-			variable:      variable,
-			constraint:    constraint,
-			supported:     supported,
-			aliased:       aliased,
-			canonicalWins: canonicalWins,
-			valid:         valid,
-			emit:          valid && !canonicalWins,
-			reason:        reason,
-		})
+		entries = append(entries, newProjectionEntry(
+			token,
+			tokens[token],
+			profile,
+			prefix,
+			prefixValid,
+			canonicalPresent,
+		))
 	}
+	return entries
+}
 
+func newProjectionEntry(
+	token string,
+	rawValue string,
+	profile *TokenProfile,
+	prefix string,
+	prefixValid bool,
+	canonicalPresent map[string]bool,
+) projectionEntry {
+	value := strings.TrimSpace(rawValue)
+	canonical, aliased := canonicalToken(token, profile)
+	spec, supported := tokenSpec(canonical, profile)
+	constraint := normalizeConstraint(spec.Constraint)
+	variable, nameValid := projectedVariable(canonical, spec.Variable, prefix, prefixValid)
+	tokenNameValid := tokenNamePattern.MatchString(token)
+	canonicalNameValid := tokenNamePattern.MatchString(canonical)
+	valueValid := validateTokenValue(canonical, value, constraint)
+	canonicalWins := aliased && canonicalPresent[canonical]
+	valid := prefixValid && tokenNameValid && canonicalNameValid && nameValid && valueValid
+
+	return projectionEntry{
+		token:         token,
+		canonical:     canonical,
+		value:         value,
+		variable:      variable,
+		constraint:    constraint,
+		supported:     supported,
+		aliased:       aliased,
+		canonicalWins: canonicalWins,
+		valid:         valid,
+		emit:          valid && !canonicalWins,
+		reason: projectionEntryReason(
+			prefixValid,
+			tokenNameValid,
+			canonicalNameValid,
+			nameValid,
+			valueValid,
+			canonicalWins,
+			constraint,
+		),
+	}
+}
+
+func projectionEntryReason(
+	prefixValid bool,
+	tokenNameValid bool,
+	canonicalNameValid bool,
+	nameValid bool,
+	valueValid bool,
+	canonicalWins bool,
+	constraint ValueConstraint,
+) string {
+	switch {
+	case !prefixValid:
+		return "invalid CSS variable prefix"
+	case !tokenNameValid:
+		return "invalid token name"
+	case !canonicalNameValid:
+		return "invalid canonical token name"
+	case !nameValid:
+		return "invalid CSS variable name"
+	case !valueValid:
+		return "invalid " + string(constraint) + " value"
+	case canonicalWins:
+		return "deprecated alias ignored because canonical token is present"
+	default:
+		return ""
+	}
+}
+
+func invalidateProjectionCollisions(entries []projectionEntry) {
 	collisions := make(map[string][]int)
 	for index := range entries {
 		if entries[index].emit {
@@ -434,14 +496,21 @@ func ProjectThemeCSSVariables(tokens map[string]string, options ProjectionOption
 			entries[index].reason = reason
 		}
 	}
+}
 
+func emitCSSProjection(
+	projection CSSProjection,
+	entries []projectionEntry,
+	profile *TokenProfile,
+	prefixValid bool,
+) CSSProjection {
 	var inline strings.Builder
 	for _, entry := range entries {
 		status := TokenResolved
 		if !entry.valid {
 			status = TokenInvalid
 		}
-		out.Diagnostics = append(out.Diagnostics, TokenDiagnostic{
+		projection.Diagnostics = append(projection.Diagnostics, TokenDiagnostic{
 			Token:      entry.token,
 			Canonical:  entry.canonical,
 			Variable:   entry.variable,
@@ -450,18 +519,19 @@ func ProjectThemeCSSVariables(tokens map[string]string, options ProjectionOption
 			Reason:     entry.reason,
 		})
 		if entry.emit {
-			out.Variables[entry.variable] = entry.value
+			projection.Variables[entry.variable] = entry.value
+			projection.emitted[entry.token] = true
 			inline.WriteString(entry.variable)
 			inline.WriteByte(':')
 			inline.WriteString(entry.value)
 			inline.WriteByte(';')
 		}
-		if options.Profile != nil && prefixValid {
-			out.Diagnostics = append(out.Diagnostics, supportDiagnostic(entry, options.Profile.Name))
+		if profile != nil && prefixValid {
+			projection.Diagnostics = append(projection.Diagnostics, supportDiagnostic(entry, profile.Name))
 		}
 	}
-	out.Inline = inline.String()
-	return out
+	projection.Inline = inline.String()
+	return projection
 }
 
 func cloneTokenSpecs(src map[string]TokenSpec) map[string]TokenSpec {
@@ -604,11 +674,7 @@ func validCSSValue(value string) bool {
 
 func unsafeCSSSyntax(value string, allowQuotes bool) bool {
 	for _, r := range value {
-		if unicode.IsControl(r) || r == ';' || r == '{' || r == '}' || r == '<' ||
-			r == '>' || r == '`' || r == '\\' {
-			return true
-		}
-		if !allowQuotes && (r == '\'' || r == '"') {
+		if unsafeCSSRune(r, allowQuotes) {
 			return true
 		}
 	}
@@ -617,6 +683,20 @@ func unsafeCSSSyntax(value string, allowQuotes bool) bool {
 		dangerousFunction.MatchString(value) ||
 		strings.Contains(strings.ToLower(value), "@import") ||
 		dangerousScheme.MatchString(value)
+}
+
+func unsafeCSSRune(r rune, allowQuotes bool) bool {
+	if unicode.IsControl(r) {
+		return true
+	}
+	switch r {
+	case ';', '{', '}', '<', '>', '`', '\\':
+		return true
+	case '\'', '"':
+		return !allowQuotes
+	default:
+		return false
+	}
 }
 
 func validColor(value string) bool {
@@ -634,17 +714,39 @@ func validColor(value string) bool {
 	parts := splitAndTrim(matches[2], ",")
 	switch strings.ToLower(matches[1]) {
 	case "rgb":
-		return len(parts) == 3 && validRGBChannels(parts)
+		return validRGBColor(parts)
 	case "rgba":
-		return len(parts) == 4 && validRGBChannels(parts[:3]) && validAlpha(parts[3])
+		return validRGBAColor(parts)
 	case "hsl":
-		return len(parts) == 3 && validHue(parts[0]) && validPercentage(parts[1]) && validPercentage(parts[2])
+		return validHSLColor(parts)
 	case "hsla":
-		return len(parts) == 4 && validHue(parts[0]) && validPercentage(parts[1]) &&
-			validPercentage(parts[2]) && validAlpha(parts[3])
+		return validHSLAColor(parts)
 	default:
 		return false
 	}
+}
+
+func validRGBColor(parts []string) bool {
+	return len(parts) == 3 && validRGBChannels(parts)
+}
+
+func validRGBAColor(parts []string) bool {
+	return len(parts) == 4 && validRGBChannels(parts[:3]) && validAlpha(parts[3])
+}
+
+func validHSLColor(parts []string) bool {
+	return len(parts) == 3 &&
+		validHue(parts[0]) &&
+		validPercentage(parts[1]) &&
+		validPercentage(parts[2])
+}
+
+func validHSLAColor(parts []string) bool {
+	return len(parts) == 4 &&
+		validHue(parts[0]) &&
+		validPercentage(parts[1]) &&
+		validPercentage(parts[2]) &&
+		validAlpha(parts[3])
 }
 
 func splitAndTrim(value, separator string) []string {
@@ -752,34 +854,64 @@ func validFontFamily(value string) bool {
 	if value == "" || unsafeCSSSyntax(value, true) || strings.Contains(value, `\`) {
 		return false
 	}
-	var quote rune
-	var familyHasContent bool
+	state := fontFamilyState{}
 	for _, r := range value {
-		switch {
-		case quote != 0:
-			if r == quote {
-				quote = 0
-			} else if !(unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || r == '-' || r == '_') {
-				return false
-			} else if !unicode.IsSpace(r) {
-				familyHasContent = true
-			}
-		case r == '\'' || r == '"':
-			quote = r
-		case r == ',':
-			if !familyHasContent {
-				return false
-			}
-			familyHasContent = false
-		case unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) || r == '-' || r == '_':
-			if !unicode.IsSpace(r) {
-				familyHasContent = true
-			}
-		default:
+		if !state.consume(r) {
 			return false
 		}
 	}
-	return quote == 0 && familyHasContent
+	return state.quote == 0 && state.familyHasContent
+}
+
+type fontFamilyState struct {
+	quote            rune
+	familyHasContent bool
+}
+
+func (state *fontFamilyState) consume(r rune) bool {
+	if state.quote != 0 {
+		return state.consumeQuoted(r)
+	}
+	switch {
+	case r == '\'' || r == '"':
+		state.quote = r
+		return true
+	case r == ',':
+		if !state.familyHasContent {
+			return false
+		}
+		state.familyHasContent = false
+		return true
+	case validFontFamilyRune(r):
+		if !unicode.IsSpace(r) {
+			state.familyHasContent = true
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (state *fontFamilyState) consumeQuoted(r rune) bool {
+	if r == state.quote {
+		state.quote = 0
+		return true
+	}
+	if !validFontFamilyRune(r) {
+		return false
+	}
+	if !unicode.IsSpace(r) {
+		state.familyHasContent = true
+	}
+	return true
+}
+
+func validFontFamilyRune(r rune) bool {
+	return unicode.IsLetter(r) ||
+		unicode.IsDigit(r) ||
+		unicode.IsSpace(r) ||
+		r == '-' ||
+		r == '_'
 }
 
 func validFontWeight(value string) bool {

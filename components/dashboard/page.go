@@ -36,8 +36,27 @@ func (page Page) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	type pageJSON Page
-	return json.Marshal(pageJSON(normalized))
+	return json.Marshal(struct {
+		Title       string         `json:"title,omitempty"`
+		Description string         `json:"description,omitempty"`
+		Locale      string         `json:"locale,omitempty"`
+		Areas       []PageArea     `json:"areas,omitempty"`
+		Shell       *Shell         `json:"shell,omitempty"`
+		Assets      *PageAssets    `json:"assets,omitempty"`
+		Theme       map[string]any `json:"theme,omitempty"`
+		State       *PageState     `json:"state,omitempty"`
+		Meta        *PageMeta      `json:"meta,omitempty"`
+	}{
+		Title:       normalized.Title,
+		Description: normalized.Description,
+		Locale:      normalized.Locale,
+		Areas:       normalized.Areas,
+		Shell:       normalized.Shell,
+		Assets:      normalized.Assets,
+		Theme:       themePayloadForPage(normalized.Theme, normalized),
+		State:       normalized.State,
+		Meta:        normalized.Meta,
+	})
 }
 
 // Area returns the first area registered for the provided slot.
@@ -91,7 +110,7 @@ func (page Page) Normalize() (Page, error) {
 }
 
 func (page Page) legacyPayload() map[string]any {
-	theme := themePayload(page.Theme)
+	theme := themePayloadForPage(page.Theme, page)
 	areas := make(map[string]any, len(page.Areas))
 	ordered := make([]map[string]any, 0, len(page.Areas))
 	for _, area := range page.Areas {

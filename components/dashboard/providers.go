@@ -19,13 +19,16 @@ var defaultProviders = map[string]Provider{
 	"admin.widget.alert_trends":     NewAlertTrendsProvider(DemoAlertRepository{}),
 }
 
-func registerDefaultWidgetRuntimes(reg *Registry) {
+func registerDefaultWidgetRuntimes(reg *Registry) error {
 	if reg == nil {
-		return
+		return nil
 	}
 	for code, provider := range defaultProviders {
-		_ = reg.RegisterProvider(code, provider)
+		if err := reg.RegisterProvider(code, provider); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func newRecentActivityRuntime(feed ActivityFeed) widgetSpecRuntime {
@@ -61,11 +64,7 @@ func newUserStatsProvider() Provider {
 		},
 		BuildView: func(_ context.Context, data userStatsData, _ WidgetViewContext[userStatsConfig]) (JSONViewModel[userStatsView], error) {
 			return JSONViewModel[userStatsView]{
-				Value: userStatsView{
-					Title:  data.Title,
-					Metric: data.Metric,
-					Values: data.Values,
-				},
+				Value: userStatsView(data),
 			}, nil
 		},
 	})
@@ -114,12 +113,7 @@ func newRecentActivitySpec(feed ActivityFeed) WidgetSpec[recentActivityConfig, r
 		BuildView: func(_ context.Context, data recentActivityData, _ WidgetViewContext[recentActivityConfig]) (JSONViewModel[recentActivityView], error) {
 			items := make([]recentActivityItemView, 0, len(data.Items))
 			for _, item := range data.Items {
-				items = append(items, recentActivityItemView{
-					User:    item.User,
-					Action:  item.Action,
-					Details: item.Details,
-					Ago:     item.Ago,
-				})
+				items = append(items, recentActivityItemView(item))
 			}
 			return JSONViewModel[recentActivityView]{
 				Value: recentActivityView{Items: items},

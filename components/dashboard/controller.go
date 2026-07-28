@@ -122,6 +122,10 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 		if areaCode == "" {
 			areaCode = code
 		}
+		state, err := widgetPresentationState(inst.Metadata)
+		if err != nil {
+			return nil, PageAssets{}, fmt.Errorf("dashboard: widget %q: %w", inst.ID, err)
+		}
 		widgets = append(widgets, WidgetFrame{
 			ID:         inst.ID,
 			Definition: inst.DefinitionID,
@@ -131,7 +135,7 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 			Area:       areaCode,
 			Span:       widgetSpan(inst.Metadata),
 			Hidden:     widgetHidden(inst.Metadata),
-			State:      widgetPresentationState(inst.Metadata),
+			State:      state,
 			Meta: WidgetMeta{
 				Order:         idx + 1,
 				Layout:        widgetLayout(inst.Metadata),
@@ -144,16 +148,28 @@ func (c *Controller) widgetFrames(code string, instances []WidgetInstance) ([]Wi
 	return widgets, assets, nil
 }
 
-func widgetPresentationState(metadata map[string]any) WidgetPresentationState {
+func widgetPresentationState(metadata map[string]any) (WidgetPresentationState, error) {
 	if len(metadata) == 0 {
-		return ""
+		return "", nil
 	}
-	value, _ := metadata["state"].(string)
+	raw, present := metadata["state"]
+	if !present {
+		return "", nil
+	}
+	var value string
+	switch typed := raw.(type) {
+	case string:
+		value = typed
+	case WidgetPresentationState:
+		value = string(typed)
+	default:
+		return "", fmt.Errorf("presentation state must be a string or WidgetPresentationState")
+	}
 	state := WidgetPresentationState(strings.TrimSpace(value))
 	if !state.Valid() {
-		return ""
+		return "", fmt.Errorf("invalid presentation state %q", state)
 	}
-	return state
+	return state, nil
 }
 
 func (c *Controller) templatePath() string {
@@ -297,8 +313,8 @@ func widgetHidden(metadata map[string]any) bool {
 	if metadata == nil {
 		return false
 	}
-	hidden, _ := metadata["hidden"].(bool)
-	return hidden
+	hidden, ok := metadata["hidden"].(bool)
+	return ok && hidden
 }
 
 func widgetLayout(metadata map[string]any) *WidgetLayout {

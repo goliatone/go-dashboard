@@ -50,19 +50,27 @@ func NewRegistry() *Registry {
 		runtimes:        map[string]widgetSpecRuntime{},
 		manifestMeta:    map[string]ManifestProvider{},
 	}
-	reg.registerDefaults()
-	_ = reg.ApplyHooks()
+	if err := reg.registerDefaults(); err != nil {
+		panic(fmt.Errorf("dashboard: register defaults: %w", err))
+	}
+	if err := reg.ApplyHooks(); err != nil {
+		panic(fmt.Errorf("dashboard: apply widget hooks: %w", err))
+	}
 	return reg
 }
 
-func (r *Registry) registerDefaults() {
+func (r *Registry) registerDefaults() error {
 	for _, area := range DefaultAreaDefinitions() {
-		_ = r.RegisterArea(area)
+		if err := r.RegisterArea(area); err != nil {
+			return err
+		}
 	}
 	for _, def := range DefaultWidgetDefinitions() {
-		_ = r.RegisterDefinition(def)
+		if err := r.RegisterDefinition(def); err != nil {
+			return err
+		}
 	}
-	registerDefaultWidgetRuntimes(r)
+	return registerDefaultWidgetRuntimes(r)
 }
 
 // ApplyHooks executes registered widget hooks.

@@ -36,6 +36,10 @@ type SemanticChartPalette struct {
 // series position rotates through previously supplied valid semantic colors;
 // before the first semantic color it retains that position's current default.
 func (theme *ThemeSelection) SemanticChartPalette() SemanticChartPalette {
+	return theme.semanticChartPaletteFor("")
+}
+
+func (theme *ThemeSelection) semanticChartPaletteFor(chartType string) SemanticChartPalette {
 	palette := SemanticChartPalette{Series: currentChartSeriesDefaults}
 	if theme == nil {
 		return palette
@@ -47,8 +51,8 @@ func (theme *ThemeSelection) SemanticChartPalette() SemanticChartPalette {
 		}
 	}
 
-	consumed := make([]string, 0, semanticChartSeriesCount+4)
-	seenConsumed := map[string]bool{}
+	seriesConsumed := make([]string, 0, semanticChartSeriesCount)
+	seenSeries := map[string]bool{}
 	semanticColors := make([]string, 0, semanticChartSeriesCount)
 	rotation := 0
 	for index := range semanticChartSeriesCount {
@@ -59,7 +63,7 @@ func (theme *ThemeSelection) SemanticChartPalette() SemanticChartPalette {
 			palette.SeriesActive = true
 			semanticColors = append(semanticColors, resolved.Value)
 			rotation = 0
-			appendConsumedToken(&consumed, seenConsumed, resolved.Token)
+			appendUniqueToken(&seriesConsumed, seenSeries, resolved.Token)
 			continue
 		}
 		if len(semanticColors) > 0 {
@@ -68,35 +72,46 @@ func (theme *ThemeSelection) SemanticChartPalette() SemanticChartPalette {
 		}
 	}
 
-	palette.Axis = resolveChartPresentationToken(
+	var axisToken string
+	palette.Axis, axisToken = resolveChartPresentationToken(
 		theme,
 		"dashboard.chart.axis",
 		[]string{"chart.axis", "color.text.secondary"},
-		&consumed,
-		seenConsumed,
 	)
-	palette.Grid = resolveChartPresentationToken(
+	var gridToken string
+	palette.Grid, gridToken = resolveChartPresentationToken(
 		theme,
 		"dashboard.chart.grid",
 		[]string{"chart.grid", "color.border.default"},
-		&consumed,
-		seenConsumed,
 	)
-	palette.TooltipSurface = resolveChartPresentationToken(
+	var tooltipSurfaceToken string
+	palette.TooltipSurface, tooltipSurfaceToken = resolveChartPresentationToken(
 		theme,
 		"dashboard.chart.tooltip-surface",
 		[]string{"chart.tooltip-surface", "color.surface.raised"},
-		&consumed,
-		seenConsumed,
 	)
-	palette.TooltipText = resolveChartPresentationToken(
+	var tooltipTextToken string
+	palette.TooltipText, tooltipTextToken = resolveChartPresentationToken(
 		theme,
 		"dashboard.chart.tooltip-text",
 		[]string{"chart.tooltip-text", "color.text.primary"},
-		&consumed,
-		seenConsumed,
 	)
 	palette.Relevant = palette.Relevant || palette.Active()
+
+	consumed := append([]string(nil), seriesConsumed...)
+	seenConsumed := make(map[string]bool, len(consumed)+4)
+	for _, token := range consumed {
+		seenConsumed[token] = true
+	}
+	appendUniqueToken(&consumed, seenConsumed, tooltipSurfaceToken)
+	appendUniqueToken(&consumed, seenConsumed, tooltipTextToken)
+	if chartType == "" || isCartesianChartType(chartType) {
+		appendUniqueToken(&consumed, seenConsumed, axisToken)
+		appendUniqueToken(&consumed, seenConsumed, gridToken)
+	} else {
+		palette.Axis = ""
+		palette.Grid = ""
+	}
 	palette.Diagnostics = theme.SemanticProjection().ConsumerDiagnostics(
 		"go-dashboard.echarts",
 		consumed...,
@@ -134,21 +149,19 @@ func resolveChartPresentationToken(
 	theme *ThemeSelection,
 	component string,
 	portable []string,
-	consumed *[]string,
-	seen map[string]bool,
-) string {
+) (string, string) {
 	resolved := theme.ResolveSemanticToken(component, portable, "")
 	if resolved.Token == "" {
-		return ""
+		return "", ""
 	}
-	appendConsumedToken(consumed, seen, resolved.Token)
-	return resolved.Value
+	return resolved.Value, resolved.Token
 }
 
-func appendConsumedToken(tokens *[]string, seen map[string]bool, token string) {
-	if token == "" || seen[token] {
-		return
+func isCartesianChartType(chartType string) bool {
+	switch strings.ToLower(strings.TrimSpace(chartType)) {
+	case "bar", "line", "scatter":
+		return true
+	default:
+		return false
 	}
-	seen[token] = true
-	*tokens = append(*tokens, token)
 }

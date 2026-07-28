@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -71,10 +72,14 @@ func NewService(opts Options) *Service {
 		act:  newActivityEmitter(opts),
 	}
 	if opts.Providers != nil && opts.ActivityFeed != nil {
+		var err error
 		if registry, ok := opts.Providers.(*Registry); ok {
-			_ = registry.registerRuntime("admin.widget.recent_activity", newRecentActivityRuntime(opts.ActivityFeed))
+			err = registry.registerRuntime("admin.widget.recent_activity", newRecentActivityRuntime(opts.ActivityFeed))
 		} else {
-			_ = opts.Providers.RegisterProvider("admin.widget.recent_activity", newRecentActivityProvider(opts.ActivityFeed))
+			err = opts.Providers.RegisterProvider("admin.widget.recent_activity", newRecentActivityProvider(opts.ActivityFeed))
+		}
+		if err != nil {
+			panic(fmt.Errorf("dashboard: register recent activity provider: %w", err))
 		}
 	}
 	return svc
@@ -116,8 +121,8 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 	if req.DefinitionID == "" {
 		return errInvalidDefinition
 	}
-	if err := s.validateConfiguration(req.DefinitionID, req.Configuration); err != nil {
-		return err
+	if validationErr := s.validateConfiguration(req.DefinitionID, req.Configuration); validationErr != nil {
+		return validationErr
 	}
 	metadata := map[string]any{
 		"user_id": req.UserID,
@@ -162,7 +167,7 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 		UserID:   req.UserID,
 		TenantID: req.TenantID,
 	})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.widget.add",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -179,7 +184,9 @@ func (s *Service) AddWidget(ctx context.Context, req AddWidgetRequest) error {
 			"reason":        "add",
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -187,11 +194,11 @@ func (s *Service) recordTelemetry(ctx context.Context, event string, payload map
 	s.opts.Telemetry.Record(ctx, event, payload)
 }
 
-func (s *Service) emitActivity(ctx context.Context, event activity.Event) {
+func (s *Service) emitActivity(ctx context.Context, event activity.Event) error {
 	if s.act == nil || !s.act.Enabled() {
-		return
+		return nil
 	}
-	_ = s.act.Emit(ctx, event)
+	return s.act.Emit(ctx, event)
 }
 
 // RemoveWidget deletes the widget instance.
@@ -218,7 +225,7 @@ func (s *Service) RemoveWidget(ctx context.Context, widgetID string) error {
 	}
 	s.recordTelemetry(ctx, "dashboard.widget.remove", map[string]any{"widget_id": widgetID})
 	actCtx := resolveActivityContext(ctx, ActivityContext{})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.widget.remove",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -232,7 +239,9 @@ func (s *Service) RemoveWidget(ctx context.Context, widgetID string) error {
 			"reason":        "delete",
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -251,8 +260,8 @@ func (s *Service) UpdateWidget(ctx context.Context, widgetID string, req UpdateW
 	}
 	updateInput := UpdateWidgetInstanceInput{InstanceID: widgetID}
 	if req.Configuration != nil {
-		if err := s.validateConfiguration(current.DefinitionID, req.Configuration); err != nil {
-			return err
+		if validationErr := s.validateConfiguration(current.DefinitionID, req.Configuration); validationErr != nil {
+			return validationErr
 		}
 		updateInput.Configuration = req.Configuration
 	}
@@ -288,7 +297,7 @@ func (s *Service) UpdateWidget(ctx context.Context, widgetID string, req UpdateW
 		UserID:   req.UserID,
 		TenantID: req.TenantID,
 	})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.widget.update",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -302,7 +311,9 @@ func (s *Service) UpdateWidget(ctx context.Context, widgetID string, req UpdateW
 			"reason":        "update",
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -332,7 +343,7 @@ func (s *Service) ReorderWidgets(ctx context.Context, areaCode string, widgetIDs
 		"count":     len(widgetIDs),
 	})
 	actCtx := resolveActivityContext(ctx, ActivityContext{})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.widget.reorder",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -345,7 +356,9 @@ func (s *Service) ReorderWidgets(ctx context.Context, areaCode string, widgetIDs
 			"reason":    "reorder",
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -490,55 +503,27 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 	}
 	enriched := make([]WidgetInstance, len(widgets))
 	copy(enriched, widgets)
-	type runtimeRegistry interface {
-		widgetRuntime(code string) (widgetSpecRuntime, bool)
+	registry, supportsRuntimes := s.opts.Providers.(runtimeRegistry)
+	if !supportsRuntimes {
+		registry = nil
 	}
-	registry, _ := s.opts.Providers.(runtimeRegistry)
 	for i, inst := range enriched {
-		var options map[string]any
-		if s.opts.ScriptNonce != nil {
-			if nonce := strings.TrimSpace(s.opts.ScriptNonce(ctx)); nonce != "" {
-				options = map[string]any{
-					scriptNonceOptionKey: nonce,
-				}
-			}
-		}
 		meta := WidgetContext{
 			Instance:   inst,
 			Viewer:     viewer,
 			Translator: s.opts.Translation,
-			Options:    options,
+			Options:    s.widgetOptions(ctx),
 			Theme:      theme,
 		}
-		var (
-			view WidgetViewModel
-			err  error
-		)
-		if registry != nil {
-			if runtime, ok := registry.widgetRuntime(inst.DefinitionID); ok && runtime != nil {
-				var resolved ResolvedWidget
-				resolved, err = runtime.Resolve(ctx, meta)
-				if err == nil {
-					view = resolved.View
-				}
-			}
-		}
-		if view == nil && err == nil {
-			provider, ok := s.opts.Providers.Provider(inst.DefinitionID)
-			if !ok || provider == nil {
-				continue
-			}
-			var data WidgetData
-			data, err = provider.Fetch(ctx, meta)
-			if err == nil {
-				view = data
-			}
-		}
+		view, found, err := s.resolveWidgetView(ctx, registry, meta)
 		if err != nil {
 			s.recordTelemetry(ctx, "dashboard.widget.provider_error", map[string]any{
 				"definition_id": inst.DefinitionID,
 				"error":         err.Error(),
 			})
+			continue
+		}
+		if !found {
 			continue
 		}
 		if enriched[i].Metadata == nil {
@@ -547,6 +532,41 @@ func (s *Service) attachProviderData(ctx context.Context, viewer ViewerContext, 
 		enriched[i].Metadata[widgetViewModelMetadataKey] = view
 	}
 	return enriched
+}
+
+type runtimeRegistry interface {
+	widgetRuntime(code string) (widgetSpecRuntime, bool)
+}
+
+func (s *Service) widgetOptions(ctx context.Context) map[string]any {
+	if s.opts.ScriptNonce == nil {
+		return nil
+	}
+	nonce := strings.TrimSpace(s.opts.ScriptNonce(ctx))
+	if nonce == "" {
+		return nil
+	}
+	return map[string]any{scriptNonceOptionKey: nonce}
+}
+
+func (s *Service) resolveWidgetView(
+	ctx context.Context,
+	registry runtimeRegistry,
+	meta WidgetContext,
+) (WidgetViewModel, bool, error) {
+	if registry != nil {
+		runtime, found := registry.widgetRuntime(meta.Instance.DefinitionID)
+		if found && runtime != nil {
+			resolved, err := runtime.Resolve(ctx, meta)
+			return resolved.View, true, err
+		}
+	}
+	provider, found := s.opts.Providers.Provider(meta.Instance.DefinitionID)
+	if !found || provider == nil {
+		return nil, false, nil
+	}
+	data, err := provider.Fetch(ctx, meta)
+	return data, true, err
 }
 
 // NotifyWidgetUpdated exposes refresh hook invocation for commands/transports.
@@ -560,7 +580,7 @@ func (s *Service) NotifyWidgetUpdated(ctx context.Context, event WidgetEvent) er
 		"reason":    event.Reason,
 	})
 	actCtx := resolveActivityContext(ctx, ActivityContext{})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.widget.event",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -573,7 +593,9 @@ func (s *Service) NotifyWidgetUpdated(ctx context.Context, event WidgetEvent) er
 			"reason":    event.Reason,
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -593,7 +615,7 @@ func (s *Service) SavePreferences(ctx context.Context, viewer ViewerContext, ove
 		ActorID: viewer.UserID,
 		UserID:  viewer.UserID,
 	})
-	s.emitActivity(ctx, activity.Event{
+	if err := s.emitActivity(ctx, activity.Event{
 		Verb:       "dashboard.preferences.save",
 		ActorID:    actCtx.ActorID,
 		UserID:     actCtx.UserID,
@@ -608,7 +630,9 @@ func (s *Service) SavePreferences(ctx context.Context, viewer ViewerContext, ove
 			"viewer_locale": viewer.Locale,
 		},
 		OccurredAt: time.Now(),
-	})
+	}); err != nil {
+		return err
+	}
 	return nil
 }
 
