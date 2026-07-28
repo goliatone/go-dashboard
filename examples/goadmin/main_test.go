@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -46,7 +47,8 @@ func TestDemoControllerPageUsesTypedContracts(t *testing.T) {
 	salesChart := requireWidgetByDefinition(t, page, "admin.widget.sales_chart")
 	salesChartData := requireWidgetDataMap(t, salesChart)
 	assert.Equal(t, "wonderland", salesChartData["theme"])
-	markup, _ := salesChartData["chart_html"].(string)
+	markup, validMarkup := salesChartData["chart_html"].(string)
+	require.True(t, validMarkup, "chart_html should be a string")
 	assert.Contains(t, markup, "echarts.init")
 	assert.NotContains(t, markup, dashboard.DefaultEChartsAssetsPath+"echarts.min.js")
 	assert.NotContains(t, strings.ToLower(markup), "<!doctype html>")
@@ -55,15 +57,15 @@ func TestDemoControllerPageUsesTypedContracts(t *testing.T) {
 func TestDemoHTMLRouteRendersTypedPageThemeAndCharts(t *testing.T) {
 	harness := newDemoHarness(t)
 
-	req := httptest.NewRequest("GET", "/admin/dashboard?locale=es", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/admin/dashboard?locale=es", nil)
 	resp, err := harness.app.Test(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.Contains(t, string(body), `lang="es"`)
 	assert.Contains(t, string(body), "Panel de control")
 	assert.Contains(t, string(body), "https://cdn.goadmin.dev/assets/logo.svg")
@@ -101,20 +103,27 @@ func TestDemoPreferencesRoutePersistsCanonicalLayout(t *testing.T) {
 	swappedID := mainArea.Widgets[1].ID
 
 	payload := canonicalPreferencesPayload(page)
-	mainOrder := payload["area_order"].(map[string][]string)["admin.dashboard.main"]
+	areaOrder, validAreaOrder := payload["area_order"].(map[string][]string)
+	require.True(t, validAreaOrder, "area_order should be a map")
+	mainOrder := areaOrder["admin.dashboard.main"]
 	mainOrder[0], mainOrder[1] = mainOrder[1], mainOrder[0]
 	payload["hidden_widget_ids"] = []string{hiddenID}
 
 	raw, err := json.Marshal(payload)
 	require.NoError(t, err)
 
-	req := httptest.NewRequest("POST", "/admin/dashboard/preferences", bytes.NewReader(raw))
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		"/admin/dashboard/preferences",
+		bytes.NewReader(raw),
+	)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := harness.app.Test(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 
-	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	updated, err := harness.controller.Page(context.Background(), viewer)
 	require.NoError(t, err)
@@ -171,19 +180,6 @@ func requireWidgetByDefinition(t *testing.T, page dashboard.Page, definition str
 		}
 	}
 	t.Fatalf("widget definition %s not found", definition)
-	return dashboard.WidgetFrame{}
-}
-
-func requireWidgetByID(t *testing.T, page dashboard.Page, id string) dashboard.WidgetFrame {
-	t.Helper()
-	for _, area := range page.Areas {
-		for _, widget := range area.Widgets {
-			if widget.ID == id {
-				return widget
-			}
-		}
-	}
-	t.Fatalf("widget %s not found", id)
 	return dashboard.WidgetFrame{}
 }
 

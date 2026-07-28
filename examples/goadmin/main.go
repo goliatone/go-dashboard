@@ -538,21 +538,42 @@ func registerDemoContentProviders(reg *dashboard.Registry) error {
 	return nil
 }
 
-//nolint:gocyclo,funlen // The example fixture is a linear dashboard assembly kept in one place for readability.
 func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationService, themeProvider dashboard.ThemeProvider, themeSelector dashboard.ThemeSelectorFunc) (*dashboard.Service, *dashboard.Registry, *memoryWidgetStore, error) {
 	store := newMemoryWidgetStore()
 	registry := dashboard.NewRegistry()
-	feed := demoActivityFeed{
-		items: []dashboard.ActivityItem{
-			{User: "Candice Reed", Action: "published the spring pricing update", Details: "Billing · Plan v3 rollout", Ago: 5 * time.Minute},
-			{User: "Noah Patel", Action: "invited 24 enterprise seats", Details: "Acme Industrial — Enterprise", Ago: 22 * time.Minute},
-			{User: "Marcos Valle", Action: "resolved 14 aging invoices", Details: "Finance · Treasury automation", Ago: 49 * time.Minute},
-			{User: "Sara Ndlovu", Action: "shipped a dashboard theme change", Details: "Design System · Canary env", Ago: 2 * time.Hour},
-			{User: "Elena Ibarra", Action: "closed incident #782", Details: "Checkout API · On-call", Ago: 6 * time.Hour},
-		},
+	customCode, err := registerWelcomeWidget(ctx, store, registry)
+	if err != nil {
+		return nil, nil, nil, err
 	}
+	service := newDemoDashboardService(store, registry, translator, themeProvider, themeSelector)
+	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
+	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: false}); err != nil {
+		return nil, nil, nil, fmt.Errorf("seed dashboard: %w", err)
+	}
+	if err := registerAnalyticsProviders(registry); err != nil {
+		return nil, nil, nil, fmt.Errorf("register analytics providers: %w", err)
+	}
+	if err := registerDemoContentProviders(registry); err != nil {
+		return nil, nil, nil, fmt.Errorf("register demo providers: %w", err)
+	}
+	if err := seedDemoWidgets(ctx, service,
+		primaryDemoWidgets(customCode),
+		chartDemoWidgets(),
+		sidebarDemoWidgets(),
+		footerDemoWidgets(),
+	); err != nil {
+		return nil, nil, nil, err
+	}
+	seedDefaultLayout(ctx, service, dashboard.ViewerContext{UserID: sampleViewerID, Locale: "en"})
+	return service, registry, store, nil
+}
 
-	customDefinition := dashboard.WidgetDefinition{
+func registerWelcomeWidget(
+	ctx context.Context,
+	store *memoryWidgetStore,
+	registry *dashboard.Registry,
+) (string, error) {
+	definition := dashboard.WidgetDefinition{
 		Code:        "demo.widget.welcome",
 		Name:        "Welcome Banner",
 		Description: "Greets the signed-in administrator.",
@@ -572,44 +593,69 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			},
 		},
 	}
-	if _, err := store.EnsureDefinition(ctx, customDefinition); err != nil {
-		return nil, nil, nil, fmt.Errorf("ensure welcome definition: %w", err)
+	if _, err := store.EnsureDefinition(ctx, definition); err != nil {
+		return "", fmt.Errorf("ensure welcome definition: %w", err)
 	}
-	if err := registry.RegisterDefinition(customDefinition); err != nil {
-		return nil, nil, nil, fmt.Errorf("register welcome definition: %w", err)
+	if err := registry.RegisterDefinition(definition); err != nil {
+		return "", fmt.Errorf("register welcome definition: %w", err)
 	}
-	if err := registry.RegisterProvider(customDefinition.Code, dashboard.ProviderFunc(func(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
-		configMessage := meta.Instance.Configuration["message"]
-		messageMap := toStringMap(configMessage)
-		fallback := translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.message", "Operations look steady. Use this space for runbook snippets or rotating notices.")
-		defaultMessage := fallback
-		if raw, ok := configMessage.(string); ok && raw != "" {
-			defaultMessage = raw
-		}
-		message := defaultMessage
-		if len(messageMap) > 0 {
-			if defaultMessage == "" {
-				defaultMessage = fallback
-			}
-			message = dashboard.ResolveLocalizedValue(messageMap, meta.Viewer.Locale, defaultMessage)
-		} else if message == "" {
-			message = fallback
-		}
-		return dashboard.WidgetData{
-			"headline": translateOrDefault(ctx, meta.Translator, meta.Viewer.Locale, "demo.widget.welcome.headline", fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID)),
-			"message":  message,
-		}, nil
-	})); err != nil {
-		return nil, nil, nil, fmt.Errorf("register welcome provider: %w", err)
+	if err := registry.RegisterProvider(definition.Code, dashboard.ProviderFunc(welcomeWidgetData)); err != nil {
+		return "", fmt.Errorf("register welcome provider: %w", err)
 	}
+	return definition.Code, nil
+}
 
-	service := dashboard.NewService(dashboard.Options{
+func welcomeWidgetData(ctx context.Context, meta dashboard.WidgetContext) (dashboard.WidgetData, error) {
+	configMessage := meta.Instance.Configuration["message"]
+	fallback := translateOrDefault(
+		ctx,
+		meta.Translator,
+		meta.Viewer.Locale,
+		"demo.widget.welcome.message",
+		"Operations look steady. Use this space for runbook snippets or rotating notices.",
+	)
+	message := resolveWelcomeMessage(configMessage, meta.Viewer.Locale, fallback)
+	return dashboard.WidgetData{
+		"headline": translateOrDefault(
+			ctx,
+			meta.Translator,
+			meta.Viewer.Locale,
+			"demo.widget.welcome.headline",
+			fmt.Sprintf("Hey %s 👋", meta.Viewer.UserID),
+		),
+		"message": message,
+	}, nil
+}
+
+func resolveWelcomeMessage(configMessage any, locale, fallback string) string {
+	messageMap := toStringMap(configMessage)
+	defaultMessage := fallback
+	if raw, valid := configMessage.(string); valid && raw != "" {
+		defaultMessage = raw
+	}
+	if len(messageMap) > 0 {
+		return dashboard.ResolveLocalizedValue(messageMap, locale, defaultMessage)
+	}
+	if defaultMessage == "" {
+		return fallback
+	}
+	return defaultMessage
+}
+
+func newDemoDashboardService(
+	store *memoryWidgetStore,
+	registry *dashboard.Registry,
+	translator dashboard.TranslationService,
+	themeProvider dashboard.ThemeProvider,
+	themeSelector dashboard.ThemeSelectorFunc,
+) *dashboard.Service {
+	return dashboard.NewService(dashboard.Options{
 		WidgetStore:   store,
 		Providers:     registry,
 		Translation:   translator,
 		ThemeProvider: themeProvider,
 		ThemeSelector: themeSelector,
-		ActivityFeed:  feed,
+		ActivityFeed:  demoActivityFeedFixture(),
 		ActivityHooks: activitypkg.Hooks{
 			activityusersink.Hook{Sink: &loggingActivitySink{}},
 		},
@@ -618,209 +664,211 @@ func setupDemoDashboard(ctx context.Context, translator dashboard.TranslationSer
 			Channel: "dashboard",
 		},
 	})
-	defaultViewer := dashboard.ViewerContext{UserID: sampleViewerID, Locale: "en"}
+}
 
-	seed := commands.NewSeedDashboardCommand(store, registry, service, nil)
-	if err := seed.Execute(ctx, commands.SeedDashboardInput{SeedLayout: false}); err != nil {
-		return nil, nil, nil, fmt.Errorf("seed dashboard: %w", err)
-	}
+func demoActivityFeedFixture() demoActivityFeed {
+	return demoActivityFeed{items: []dashboard.ActivityItem{
+		{User: "Candice Reed", Action: "published the spring pricing update", Details: "Billing · Plan v3 rollout", Ago: 5 * time.Minute},
+		{User: "Noah Patel", Action: "invited 24 enterprise seats", Details: "Acme Industrial — Enterprise", Ago: 22 * time.Minute},
+		{User: "Marcos Valle", Action: "resolved 14 aging invoices", Details: "Finance · Treasury automation", Ago: 49 * time.Minute},
+		{User: "Sara Ndlovu", Action: "shipped a dashboard theme change", Details: "Design System · Canary env", Ago: 2 * time.Hour},
+		{User: "Elena Ibarra", Action: "closed incident #782", Details: "Checkout API · On-call", Ago: 6 * time.Hour},
+	}}
+}
 
-	if err := registerAnalyticsProviders(registry); err != nil {
-		return nil, nil, nil, fmt.Errorf("register analytics providers: %w", err)
-	}
-	if err := registerDemoContentProviders(registry); err != nil {
-		return nil, nil, nil, fmt.Errorf("register demo providers: %w", err)
-	}
+type demoWidgetSeed struct {
+	name    string
+	request dashboard.AddWidgetRequest
+}
 
-	if err := addWidget(ctx, service, "conversion funnel", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.analytics_funnel",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(0),
-		Configuration: map[string]any{
-			"range":   "30d",
-			"segment": "enterprise",
-			"goal":    52,
-		},
-	}); err != nil {
-		return nil, nil, nil, err
+func seedDemoWidgets(
+	ctx context.Context,
+	service *dashboard.Service,
+	groups ...[]demoWidgetSeed,
+) error {
+	for _, group := range groups {
+		for _, widget := range group {
+			if err := addWidget(ctx, service, widget.name, widget.request); err != nil {
+				return err
+			}
+		}
 	}
-	if err := addWidget(ctx, service, "welcome banner", dashboard.AddWidgetRequest{
-		DefinitionID: customDefinition.Code,
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(1),
-		Configuration: map[string]any{
-			"message": map[string]any{
-				"en": "Operations look steady. Use this space for runbook snippets or rotating notices.",
-				"es": "Las operaciones se ven estables. Usa este espacio para notas o recordatorios.",
+	return nil
+}
+
+func primaryDemoWidgets(customCode string) []demoWidgetSeed {
+	return []demoWidgetSeed{
+		{name: "conversion funnel", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.analytics_funnel",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(0),
+			Configuration: map[string]any{
+				"range":   "30d",
+				"segment": "enterprise",
+				"goal":    52,
 			},
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "user stats", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.user_stats",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(2),
-		Configuration: map[string]any{
-			"metric": "active",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "cohort overview", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.cohort_overview",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(3),
-		Configuration: map[string]any{
-			"interval": "weekly",
-			"periods":  6,
-			"metric":   "retained",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "monthly sales chart", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.bar_chart",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(4),
-		Configuration: map[string]any{
-			"title":    "Monthly Sales",
-			"subtitle": "Revenue by region",
-			"x_axis":   []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
-			"series": []map[string]any{
-				{"name": "North America", "data": []float64{120, 132, 101, 134, 90, 230}},
-				{"name": "Europe", "data": []float64{220, 182, 191, 234, 290, 330}},
-				{"name": "Asia Pacific", "data": []float64{150, 232, 201, 154, 190, 330}},
-			},
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "user growth chart", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.line_chart",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(5),
-		Configuration: map[string]any{
-			"title":  "Weekly User Growth",
-			"x_axis": []string{"Week 1", "Week 2", "Week 3", "Week 4"},
-			"series": []map[string]any{
-				{"name": "Active Users", "data": []float64{1200, 1320, 1450, 1580}},
-				{"name": "New Signups", "data": []float64{150, 180, 220, 250}},
-			},
-			"footer_note": "Data refreshed nightly · demo dataset",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "activity feed", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.recent_activity",
-		AreaCode:     "admin.dashboard.sidebar",
-		Position:     intPtr(0),
-		Configuration: map[string]any{
-			"limit": 5,
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "system status", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.system_status",
-		AreaCode:     "admin.dashboard.sidebar",
-		Position:     intPtr(1),
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "traffic sources chart", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.pie_chart",
-		AreaCode:     "admin.dashboard.sidebar",
-		Position:     intPtr(2),
-		Configuration: map[string]any{
-			"title": "Traffic Sources",
-			"series": []map[string]any{
-				{
-					"name": "Sources",
-					"data": []map[string]any{
-						{"name": "Direct", "value": 335},
-						{"name": "Organic Search", "value": 310},
-						{"name": "Social Media", "value": 234},
-						{"name": "Email", "value": 135},
-						{"name": "Referral", "value": 148},
-					},
+		}},
+		{name: "welcome banner", request: dashboard.AddWidgetRequest{
+			DefinitionID: customCode,
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(1),
+			Configuration: map[string]any{
+				"message": map[string]any{
+					"en": "Operations look steady. Use this space for runbook snippets or rotating notices.",
+					"es": "Las operaciones se ven estables. Usa este espacio para notas o recordatorios.",
 				},
 			},
-		},
-	}); err != nil {
-		return nil, nil, nil, err
+		}},
+		{name: "user stats", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.user_stats",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(2),
+			Configuration: map[string]any{
+				"metric": "active",
+			},
+		}},
+		{name: "cohort overview", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.cohort_overview",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(3),
+			Configuration: map[string]any{
+				"interval": "weekly",
+				"periods":  6,
+				"metric":   "retained",
+			},
+		}},
 	}
-	if err := addWidget(ctx, service, "quick actions", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.quick_actions",
-		AreaCode:     "admin.dashboard.footer",
-		Position:     intPtr(0),
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "alert trends", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.alert_trends",
-		AreaCode:     "admin.dashboard.footer",
-		Position:     intPtr(1),
-		Configuration: map[string]any{
-			"lookback_days": 7,
-			"severity":      []any{"critical", "warning"},
-			"service":       "Checkout API",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "scatter correlation", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.scatter_chart",
-		AreaCode:     "admin.dashboard.main",
-		Position:     intPtr(6),
-		Configuration: map[string]any{
-			"title": "Churn vs NPS",
-			"series": []map[string]any{
-				{
+}
+
+func chartDemoWidgets() []demoWidgetSeed {
+	return []demoWidgetSeed{
+		{name: "monthly sales chart", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.bar_chart",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(4),
+			Configuration: map[string]any{
+				"title":    "Monthly Sales",
+				"subtitle": "Revenue by region",
+				"x_axis":   []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun"},
+				"series": []map[string]any{
+					{"name": "North America", "data": []float64{120, 132, 101, 134, 90, 230}},
+					{"name": "Europe", "data": []float64{220, 182, 191, 234, 290, 330}},
+					{"name": "Asia Pacific", "data": []float64{150, 232, 201, 154, 190, 330}},
+				},
+			},
+		}},
+		{name: "user growth chart", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.line_chart",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(5),
+			Configuration: map[string]any{
+				"title":  "Weekly User Growth",
+				"x_axis": []string{"Week 1", "Week 2", "Week 3", "Week 4"},
+				"series": []map[string]any{
+					{"name": "Active Users", "data": []float64{1200, 1320, 1450, 1580}},
+					{"name": "New Signups", "data": []float64{150, 180, 220, 250}},
+				},
+				"footer_note": "Data refreshed nightly · demo dataset",
+			},
+		}},
+		{name: "scatter correlation", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.scatter_chart",
+			AreaCode:     "admin.dashboard.main",
+			Position:     intPtr(6),
+			Configuration: map[string]any{
+				"title": "Churn vs NPS",
+				"series": []map[string]any{{
 					"name": "Segments",
 					"data": []map[string]any{
 						{"name": "Enterprise", "x": 3.2, "y": 96},
 						{"name": "Mid-market", "x": 5.1, "y": 88},
 						{"name": "SMB", "x": 7.4, "y": 72},
 					},
+				}},
+			},
+		}},
+	}
+}
+
+func sidebarDemoWidgets() []demoWidgetSeed {
+	return []demoWidgetSeed{
+		{name: "activity feed", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.recent_activity",
+			AreaCode:     "admin.dashboard.sidebar",
+			Position:     intPtr(0),
+			Configuration: map[string]any{
+				"limit": 5,
+			},
+		}},
+		{name: "system status", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.system_status",
+			AreaCode:     "admin.dashboard.sidebar",
+			Position:     intPtr(1),
+		}},
+		{name: "traffic sources chart", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.pie_chart",
+			AreaCode:     "admin.dashboard.sidebar",
+			Position:     intPtr(2),
+			Configuration: map[string]any{
+				"title": "Traffic Sources",
+				"series": []map[string]any{
+					{
+						"name": "Sources",
+						"data": []map[string]any{
+							{"name": "Direct", "value": 335},
+							{"name": "Organic Search", "value": 310},
+							{"name": "Social Media", "value": 234},
+							{"name": "Email", "value": 135},
+							{"name": "Referral", "value": 148},
+						},
+					},
 				},
 			},
-		},
-	}); err != nil {
-		return nil, nil, nil, err
-	}
-	if err := addWidget(ctx, service, "uptime gauge", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.gauge_chart",
-		AreaCode:     "admin.dashboard.sidebar",
-		Position:     intPtr(3),
-		Configuration: map[string]any{
-			"title": "Platform SLA",
-			"series": []map[string]any{
-				{"name": "SLA", "data": []float64{99.2}},
+		}},
+		{name: "uptime gauge", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.gauge_chart",
+			AreaCode:     "admin.dashboard.sidebar",
+			Position:     intPtr(3),
+			Configuration: map[string]any{
+				"title":  "Platform SLA",
+				"series": []map[string]any{{"name": "SLA", "data": []float64{99.2}}},
+				"theme":  "wonderland",
 			},
-			"theme": "wonderland",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
+		}},
 	}
-	if err := addWidget(ctx, service, "sales pulse", dashboard.AddWidgetRequest{
-		DefinitionID: "admin.widget.sales_chart",
-		AreaCode:     "admin.dashboard.footer",
-		Position:     intPtr(2),
-		Configuration: map[string]any{
-			"period":            "30d",
-			"metric":            "revenue",
-			"comparison_metric": "orders",
-			"segment":           "enterprise",
-			"dynamic":           true,
-			"refresh_endpoint":  "/admin/api/sales/revenue",
-		},
-	}); err != nil {
-		return nil, nil, nil, err
+}
+
+func footerDemoWidgets() []demoWidgetSeed {
+	return []demoWidgetSeed{
+		{name: "quick actions", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.quick_actions",
+			AreaCode:     "admin.dashboard.footer",
+			Position:     intPtr(0),
+		}},
+		{name: "alert trends", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.alert_trends",
+			AreaCode:     "admin.dashboard.footer",
+			Position:     intPtr(1),
+			Configuration: map[string]any{
+				"lookback_days": 7,
+				"severity":      []any{"critical", "warning"},
+				"service":       "Checkout API",
+			},
+		}},
+		{name: "sales pulse", request: dashboard.AddWidgetRequest{
+			DefinitionID: "admin.widget.sales_chart",
+			AreaCode:     "admin.dashboard.footer",
+			Position:     intPtr(2),
+			Configuration: map[string]any{
+				"period":            "30d",
+				"metric":            "revenue",
+				"comparison_metric": "orders",
+				"segment":           "enterprise",
+				"dynamic":           true,
+				"refresh_endpoint":  "/admin/api/sales/revenue",
+			},
+		}},
 	}
-	seedDefaultLayout(ctx, service, defaultViewer)
-	return service, registry, store, nil
 }
 
 func demoActivityFeedData(ctx context.Context, now time.Time, translator dashboard.TranslationService, locale string) []map[string]any {
