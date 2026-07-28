@@ -1,5 +1,25 @@
 # Changelog
 
+# [0.15.0](https://github.com/goliatone/go-dashboard/compare/v0.14.1...v0.15.0) - (2026-07-28)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.0 ([819779f](https://github.com/goliatone/go-dashboard/commit/819779f12b9610d606eadf28422874d55dfc3a9a))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Theme state and projections ([d59add6](https://github.com/goliatone/go-dashboard/commit/d59add60cd485f4a97b08e8b744af4435491027f))  - (goliatone)
+- Chart theme and projection ([fe6673b](https://github.com/goliatone/go-dashboard/commit/fe6673b715362f34fd872b0e6403477b8801aeb5))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.14.1 ([3663db1](https://github.com/goliatone/go-dashboard/commit/3663db1365eaf42addd2479eaf4fb419ea347acc))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update tests ([589c6c6](https://github.com/goliatone/go-dashboard/commit/589c6c6c28902954e64fd46a07ff5ecbcc3ba873))  - (goliatone)
+- Update docs ([d75dc02](https://github.com/goliatone/go-dashboard/commit/d75dc02ac1438c472dbae2344a9b802b42209f88))  - (goliatone)
+
 # [0.14.1](https://github.com/goliatone/go-dashboard/compare/v0.14.0...v0.14.1) - (2026-07-23)
 
 ## <!-- 13 -->📦 Bumps
