@@ -187,6 +187,12 @@ Bar/line/pie widgets are rendered server-side through go-echarts. Check
 `docs/ECHARTS_WIDGETS.md` for configuration payloads, CSP guidance, and
 troubleshooting.
 
+Dashboard chrome, widget states, and charts can consume the optional semantic
+theme contract documented in `components/dashboard/README.md`. go-dashboard
+keeps its structural `ThemeProvider` interface and has no required go-theme
+dependency; named/custom ECharts themes remain compatible with semantic
+series, axis, grid, and tooltip overrides.
+
 - Sample app: `go run ./examples/goadmin` creates chart widgets in the demo dashboard.
 - Dynamic sales widgets are powered by `SalesChartProvider`, which can query any
   repository that satisfies `SalesSeriesRepository` and optionally cache render

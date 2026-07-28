@@ -89,6 +89,9 @@ layout.
 - Typed page rendering exposes `theme` so custom renderers can wire CSS
   variables or theme-specific partials; when no provider is configured,
   behavior is unchanged.
+- go-dashboard does not require go-theme. Its safe projection contract is
+  verified against the mirrored canonical fixture in
+  `testdata/semantic-theme-projection.json`.
 
 ```go
 themeProvider := loadThemeProviderSomehow() // e.g., go-theme registry adapter
@@ -101,6 +104,51 @@ svc := dashboard.NewService(dashboard.Options{
     },
 })
 ```
+
+### Semantic dashboard contract
+
+Canonical semantic tokens use dotted names. Dashboard consumers resolve:
+
+```text
+dashboard component token -> portable token -> existing dashboard default
+```
+
+The dashboard extensions are:
+
+- `dashboard.surface`
+- `dashboard.card.{background,border,radius,shadow}`
+- `dashboard.metric.{label,value,trend-positive,trend-negative}`
+- `dashboard.chart.{axis,grid,tooltip-surface,tooltip-text}`
+
+Portable fallbacks include the matching `color.*`, `font.*`, `space.*`,
+`radius.*`, `shadow.*`, `motion.*`, and `chart.*` tokens. Existing safe legacy
+keys and pre-prefixed CSS variables remain transport-compatible. Canonical
+semantic chrome activates only when a valid shell/widget/state consumer token
+is present, so omitted, unrelated, chart-only, and legacy tokens do not restyle
+dashboard chrome.
+
+Use:
+
+- `ThemeSelection.SemanticProjection()` for variables plus
+  resolved/invalid/supported/unsupported diagnostics.
+- `ThemeSelection.DashboardConsumerDiagnostics()` for the exact component or
+  portable fallback consumed by the generic template.
+- `ThemeSelection.SemanticChartPalette()` for the typed eight-series
+  ECharts palette and chart presentation diagnostics.
+
+Widget frames accept `WidgetPresentationState` values `ready`, `loading`,
+`empty`, and `error`. Templates emit `data-dashboard-state`; loading also emits
+`aria-busy="true"`. The empty state remains represented by
+`.dashboard-area--empty`.
+
+ECharts keeps the selected named/custom `ChartTheme`. When semantic series
+tokens are present, validated colors are applied to typed series/data items.
+Missing positions retain their current positional default until the first
+valid semantic color, then rotate through previously supplied semantic colors.
+Axis, grid, tooltip surface, and tooltip text use typed go-echarts options and
+its configuration-visitor extension point. The render cache includes the
+resolved named theme and applied semantic palette, so variants cannot reuse
+stale chart markup.
 
 ## Application Shell
 
@@ -149,11 +197,10 @@ Resize handles render `role="separator"` with vertical orientation and
 keys plus Home/End.
 
 Theme tokens are ordinary `ThemeSelection` CSS variables. The shell CSS reads
-tokens such as `--dashboard-shell-bg`, `--dashboard-shell-rail`,
-`--dashboard-shell-border`, `--dashboard-shell-muted`,
-`--dashboard-shell-accent`, `--dashboard-shell-focus-ring`,
-`--dashboard-shell-resizer`, `--dashboard-shell-radius`, and
-`--dashboard-shell-shadow`, each with sensible defaults.
+the canonical dashboard and portable semantic variables first, then preserves
+the legacy `--dashboard-*` variables and original literals as final fallbacks.
+This keeps existing hosts unchanged while allowing the same semantic selection
+to style shell surfaces, cards, text, focus, radius, and shadow.
 
 Browser state is scoped as:
 
