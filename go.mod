@@ -8,7 +8,7 @@ require (
 	github.com/go-echarts/go-echarts/v2 v2.5.0
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/goliatone/go-command v0.24.1
-	github.com/goliatone/go-router v0.61.2
+	github.com/goliatone/go-router v0.61.3
 	github.com/goliatone/go-template v0.3.1
 	github.com/goliatone/go-users v0.24.1
 	github.com/google/uuid v1.6.0
