@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.15.3](https://github.com/goliatone/go-dashboard/compare/v0.15.2...v0.15.3) - (2026-07-29)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Echart provider safe options ([0be4137](https://github.com/goliatone/go-dashboard/commit/0be413739b37c7cd8fe96225424725ad713813bf))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.3 ([1e395d4](https://github.com/goliatone/go-dashboard/commit/1e395d4f505073e7653982c59f73ad8775533f66))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.2 ([4835e1b](https://github.com/goliatone/go-dashboard/commit/4835e1b9df8249fc62bd5ac29bd6f05b87fca70f))  - (goliatone)
+
 # [0.15.2](https://github.com/goliatone/go-dashboard/compare/v0.15.1...v0.15.2) - (2026-07-28)
 
 ## <!-- 13 -->📦 Bumps
