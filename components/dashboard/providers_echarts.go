@@ -38,6 +38,8 @@ type echartsWidgetView struct {
 	Title            string            `json:"title"`
 	Subtitle         string            `json:"subtitle"`
 	Theme            string            `json:"theme"`
+	ChartAssetsHost  string            `json:"chart_assets_host,omitempty"`
+	ChartOptions     map[string]any    `json:"chart_options,omitempty"`
 	SemanticPalette  []string          `json:"semantic_palette,omitempty"`
 	ThemeDiagnostics []TokenDiagnostic `json:"theme_diagnostics,omitempty"`
 	JSAssets         []string          `json:"js_assets,omitempty"`
@@ -47,9 +49,10 @@ type echartsWidgetView struct {
 }
 
 type chartRenderPayload struct {
-	Markup string   `json:"markup"`
-	JS     []string `json:"js,omitempty"`
-	CSS    []string `json:"css,omitempty"`
+	Markup  string         `json:"markup"`
+	Options map[string]any `json:"options,omitempty"`
+	JS      []string       `json:"js,omitempty"`
+	CSS     []string       `json:"css,omitempty"`
 }
 
 // ThemeResolver selects a chart theme per viewer.
@@ -250,13 +253,15 @@ func (p *EChartsProvider) buildView(
 	payload chartRenderPayload,
 ) echartsWidgetView {
 	view := echartsWidgetView{
-		ChartHTML: applySecurityDecorators(payload.Markup, nonceFrom(meta.Options)),
-		ChartType: p.chartType,
-		Title:     title,
-		Subtitle:  subtitle,
-		Theme:     renderCtx.Theme,
-		JSAssets:  append([]string{}, payload.JS...),
-		CSSAssets: append([]string{}, payload.CSS...),
+		ChartHTML:       applySecurityDecorators(payload.Markup, nonceFrom(meta.Options)),
+		ChartType:       p.chartType,
+		Title:           title,
+		Subtitle:        subtitle,
+		Theme:           renderCtx.Theme,
+		ChartAssetsHost: p.assetsHost,
+		ChartOptions:    cloneChartOptions(payload.Options),
+		JSAssets:        append([]string{}, payload.JS...),
+		CSSAssets:       append([]string{}, payload.CSS...),
 	}
 	if renderCtx.Palette.Active() {
 		view.SemanticPalette = renderCtx.Palette.SeriesColors()
@@ -373,9 +378,17 @@ func renderChart(renderable snippetRenderable) (chartRenderPayload, error) {
 	}
 	snippet := renderable.RenderSnippet()
 	markup := addResponsiveBehavior(snippet.Element + snippet.Script)
+	options := map[string]any{}
+	if err := json.Unmarshal([]byte(snippet.Option), &options); err != nil {
+		// Some advanced go-echarts configurations contain executable
+		// JavaScript functions and cannot be represented as safe JSON.
+		// Preserve the trusted HTML lane while omitting structured options.
+		options = nil
+	}
 	assets := renderable.GetAssets()
 	return chartRenderPayload{
-		Markup: markup,
+		Markup:  markup,
+		Options: options,
 		JS: appendUniqueStrings(
 			append([]string{}, assets.JSAssets.Values...),
 			assets.CustomizedJSAssets.Values...,
@@ -385,6 +398,21 @@ func renderChart(renderable snippetRenderable) (chartRenderPayload, error) {
 			assets.CustomizedCSSAssets.Values...,
 		),
 	}, nil
+}
+
+func cloneChartOptions(options map[string]any) map[string]any {
+	if len(options) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(options)
+	if err != nil {
+		return nil
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return nil
+	}
+	return cloned
 }
 
 func decodeChartRenderPayload(raw string) (chartRenderPayload, error) {

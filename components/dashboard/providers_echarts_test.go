@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -32,6 +33,10 @@ func TestEChartsBarProvider(t *testing.T) {
 	assert.Equal(t, "Test Chart", data["title"])
 	assert.Contains(t, html(data), "echarts.init")
 	assert.NotContains(t, html(data), "<!doctype html>")
+	options, ok := data["chart_options"].(map[string]any)
+	require.True(t, ok, "chart_options should expose safe structured ECharts configuration")
+	assert.NotEmpty(t, options["series"])
+	assert.Equal(t, DefaultEChartsAssetsHost(), data["chart_assets_host"])
 	assert.Equal(t, []string{
 		DefaultEChartsAssetsPath + "echarts.min.js",
 		DefaultEChartsAssetsPath + "themes/westeros.js",
@@ -204,6 +209,13 @@ func TestEChartsProviderAppliesSemanticPaletteWithoutReplacingNamedTheme(t *test
 		`"textstyle":{"color":"#0f172a"}`,
 	} {
 		assert.Contains(t, markup, want)
+	}
+	options, ok := data["chart_options"].(map[string]any)
+	require.True(t, ok, "semantic chart options should be structured")
+	encodedOptions, err := json.Marshal(options)
+	require.NoError(t, err)
+	for _, color := range []string{"#2563eb", "#f59e0b", "#64748b", "#cbd5e1", "#ffffff", "#0f172a"} {
+		assert.Contains(t, string(encodedOptions), color)
 	}
 }
 

@@ -81,6 +81,8 @@ type salesChartView struct {
 	Title           string         `json:"title"`
 	Subtitle        string         `json:"subtitle"`
 	Theme           string         `json:"theme"`
+	ChartAssetsHost string         `json:"chart_assets_host,omitempty"`
+	ChartOptions    map[string]any `json:"chart_options,omitempty"`
 	JSAssets        []string       `json:"js_assets,omitempty"`
 	CSSAssets       []string       `json:"css_assets,omitempty"`
 	Dynamic         bool           `json:"dynamic,omitempty"`
@@ -163,6 +165,8 @@ func (p *SalesChartProvider) BuildView(ctx context.Context, meta WidgetContext) 
 		Title:           chartView.Title,
 		Subtitle:        chartView.Subtitle,
 		Theme:           chartView.Theme,
+		ChartAssetsHost: chartView.ChartAssetsHost,
+		ChartOptions:    cloneChartOptions(chartView.ChartOptions),
 		JSAssets:        append([]string{}, chartView.JSAssets...),
 		CSSAssets:       append([]string{}, chartView.CSSAssets...),
 		Dynamic:         chartView.Dynamic,
