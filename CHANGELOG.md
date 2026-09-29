@@ -1,5 +1,23 @@
 # Changelog
 
+# [0.15.5](https://github.com/goliatone/go-dashboard/compare/v0.15.4...v0.15.5) - (2026-09-29)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Title display and json stringify comments ([f7e1588](https://github.com/goliatone/go-dashboard/commit/f7e15884559c09c2a4ac7268330b17afaec2009a))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.5 ([8069895](https://github.com/goliatone/go-dashboard/commit/806989538e7612a51788e1149722105ab19ff8d4))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.4 ([69b6c21](https://github.com/goliatone/go-dashboard/commit/69b6c211067a3609879d21c4c8954151b39774dc))  - (goliatone)
+
+## <!-- 7 -->⚙️ Miscellaneous Tasks
+
+- Update deps ([d42d1d4](https://github.com/goliatone/go-dashboard/commit/d42d1d4a064bcef50aed3e839f69411b79ad90c8))  - (goliatone)
+
 # [0.15.4](https://github.com/goliatone/go-dashboard/compare/v0.15.3...v0.15.4) - (2026-07-29)
 
 ## <!-- 13 -->📦 Bumps
