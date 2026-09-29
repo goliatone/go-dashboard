@@ -68,9 +68,14 @@ expects a single dataset.
   `opts.Initialization{AssetsHost: ...}`. Provide `dashboard.Options.ScriptNonce`
   when constructing the service so every inline script automatically receives
   the nonce attribute.
-- Widget configuration (titles, subtitles, axis labels, series names) is parsed
-  and HTML-escaped on the server before go-echarts receives it. Avoid
-  concatenating raw config strings directly into templates.
+- Display text (titles, subtitles, axis labels, series and data item names) is
+  HTML-escaped in `chart_html`, because go-echarts embeds the option JSON
+  verbatim in its inline `<script>`. `chart_options` describes the same chart
+  with raw display text for `echarts.setOption`, which draws text on canvas.
+  Embed `chart_options` in HTML only through an HTML-safe JSON encoder (Go's
+  `encoding/json` escapes `<`, `>` and `&`); never interpolate
+  `JSON.stringify` output into markup. Avoid concatenating raw config strings
+  directly into templates.
 - Providers run with the standard `ViewerContext`. Continue to enforce
   viewer/role-based access in custom providers before fetching sensitive data.
 

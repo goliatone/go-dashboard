@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/opts"
 	"github.com/go-echarts/go-echarts/v2/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -348,7 +350,210 @@ func TestEChartsProviderSanitizesStrings(t *testing.T) {
 	assert.NotContains(t, markup, "<b onclick")
 	assert.NotContains(t, markup, "<img src")
 	assert.NotContains(t, markup, "<script>alert(\"xss\")</script>")
-	assert.Contains(t, markup, "&amp;lt;img src=x onerror=alert(1)&amp;gt;")
+	assert.Contains(t, markup, "&lt;img src=x onerror=alert(1)&gt;")
+	assert.NotContains(t, markup, "&amp;lt;img")
+}
+
+// chartLaneLabels covers every character template.HTMLEscapeString rewrites
+// plus an attempt to close the go-echarts script element.
+var chartLaneLabels = []string{
+	`Cookies & Cream Bites`,
+	`<b>Bold</b>`,
+	`Say "hi"`,
+	`Rock 'n' Roll`,
+	`</script><script>alert(1)</script>`,
+}
+
+func TestEChartsProviderStructuredOptionsCarryRawText(t *testing.T) {
+	t.Parallel()
+	const (
+		title    = `Sales & "Growth" <FY26>`
+		subtitle = `It's <Q3> & more`
+	)
+	seriesNames := []string{`Revenue & "Margin"`, `<i>Units</i> it's`}
+	namedPoints := make([]map[string]any, len(chartLaneLabels))
+	for i, label := range chartLaneLabels {
+		namedPoints[i] = map[string]any{"name": label, "value": i + 1}
+	}
+	values := []float64{1, 2, 3, 4, 5}
+
+	cases := []struct {
+		name      string
+		chartType string
+		config    map[string]any
+		axis      []string
+		series    []string
+		items     []string
+	}{
+		{
+			name:      "bar with configured axis",
+			chartType: "bar",
+			config: map[string]any{
+				"x_axis": chartLaneLabels,
+				"series": []map[string]any{
+					{"name": seriesNames[0], "data": values},
+					{"name": seriesNames[1], "data": values},
+				},
+			},
+			axis:   chartLaneLabels,
+			series: seriesNames,
+		},
+		{
+			name:      "line with configured axis",
+			chartType: "line",
+			config: map[string]any{
+				"x_axis": chartLaneLabels,
+				"series": []map[string]any{{"name": seriesNames[0], "data": values}},
+			},
+			axis:   chartLaneLabels,
+			series: seriesNames[:1],
+		},
+		{
+			name:      "bar with axis inferred from point names",
+			chartType: "bar",
+			config: map[string]any{
+				"series": []map[string]any{{"name": seriesNames[1], "data": namedPoints}},
+			},
+			axis:   chartLaneLabels,
+			series: seriesNames[1:],
+			items:  chartLaneLabels,
+		},
+		{
+			name:      "pie",
+			chartType: "pie",
+			config: map[string]any{
+				"series": []map[string]any{{"name": seriesNames[0], "data": namedPoints}},
+			},
+			series: seriesNames[:1],
+			items:  chartLaneLabels,
+		},
+		{
+			name:      "scatter",
+			chartType: "scatter",
+			config: map[string]any{
+				"series": []map[string]any{{"name": seriesNames[1], "data": namedPoints}},
+			},
+			series: seriesNames[1:],
+			items:  chartLaneLabels,
+		},
+		{
+			name:      "gauge",
+			chartType: "gauge",
+			config: map[string]any{
+				"series": []map[string]any{{"name": seriesNames[1], "data": []float64{42}}},
+			},
+			series: seriesNames[1:],
+			items:  seriesNames[1:],
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			config := maps.Clone(tc.config)
+			config["title"] = title
+			config["subtitle"] = subtitle
+			config["show_chart_title"] = true
+			provider := NewEChartsProvider(tc.chartType, WithChartCache(nil))
+			data, err := provider.Fetch(context.Background(), sampleChartContext("admin.widget."+tc.chartType+"_chart", config))
+			require.NoError(t, err)
+
+			options := decodeChartLaneOptions(t, data)
+			assert.Equal(t, title, options.Title.Text)
+			assert.Equal(t, subtitle, options.Title.Subtext)
+			if tc.axis != nil {
+				assert.Equal(t, tc.axis, options.Axis)
+			}
+			assert.Equal(t, tc.series, options.seriesNames())
+			if tc.items != nil {
+				assert.Equal(t, tc.items, options.itemNames(0))
+			}
+
+			// Consumers embed chart_options as JSON. encoding/json escapes <, >
+			// and & inside strings, so the raw text stays HTML-safe there.
+			encoded, err := json.Marshal(data["chart_options"])
+			require.NoError(t, err)
+			encodedTitle, err := json.Marshal(title)
+			require.NoError(t, err)
+			assert.Contains(t, string(encoded), string(encodedTitle))
+			assert.NotContains(t, string(encoded), "<")
+		})
+	}
+}
+
+func TestEChartsProviderMarkupSnippetEscapesText(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar", WithChartCache(nil))
+	data, err := provider.Fetch(context.Background(), sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":            `Sales & "Growth" <FY26>`,
+		"show_chart_title": true,
+		"x_axis":           chartLaneLabels,
+		"series": []map[string]any{
+			{"name": `Revenue & "Margin"`, "data": []float64{1, 2, 3, 4, 5}},
+		},
+	}))
+	require.NoError(t, err)
+	markup := requireTestValue[string](t, data["chart_html"])
+
+	// go-echarts embeds the option JSON verbatim inside <script>, so display
+	// text must reach the markup HTML-escaped exactly once.
+	for _, want := range []string{
+		`Cookies &amp; Cream Bites`,
+		`&lt;b&gt;Bold&lt;/b&gt;`,
+		`Say &#34;hi&#34;`,
+		`Rock &#39;n&#39; Roll`,
+		`&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;`,
+		`Revenue &amp; &#34;Margin&#34;`,
+		`Sales &amp; &#34;Growth&#34; &lt;FY26&gt;`,
+	} {
+		assert.Contains(t, markup, want)
+	}
+	for _, unwanted := range []string{`<b>`, `Say "hi"`, `alert(1)</script>`, `&amp;amp;`, `&amp;lt;`, `&amp;#34;`} {
+		assert.NotContains(t, markup, unwanted)
+	}
+	assert.Equal(t, 1, strings.Count(markup, "<script"), "display text must not open a script element")
+	assert.Equal(t, 1, strings.Count(markup, "</script>"), "display text must not close the chart script")
+}
+
+func TestStructuredChartOptionsOmitJavaScriptFunctions(t *testing.T) {
+	t.Parallel()
+	bar := charts.NewBar()
+	bar.SetGlobalOptions(charts.WithTooltipOpts(opts.Tooltip{
+		Formatter: opts.FuncOpts("function (params) { return params.name; }"),
+	}))
+	bar.SetXAxis([]string{"A"})
+	bar.AddSeries("Series", []opts.BarData{{Value: 1}})
+
+	assert.Nil(t, structuredChartOptions(bar))
+}
+
+func TestEChartsProviderTranslatesRawText(t *testing.T) {
+	t.Parallel()
+	provider := NewEChartsProvider("bar", WithChartCache(nil))
+	ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+		"title":            "Sales",
+		"show_chart_title": true,
+		"x_axis":           []string{"Cookies & Cream"},
+		"series":           []map[string]any{{"name": "Units & Returns", "data": []float64{1}}},
+	})
+	ctx.Translator = mapTranslationService{
+		"dashboard.widget.admin.widget.bar_chart.title": `Ventas & "Más"`,
+		"Cookies & Cream": "Galletas & Crema",
+		"Units & Returns": "Unidades <y> devoluciones",
+	}
+
+	data, err := provider.Fetch(context.Background(), ctx)
+	require.NoError(t, err)
+
+	options := decodeChartLaneOptions(t, data)
+	assert.Equal(t, `Ventas & "Más"`, options.Title.Text)
+	assert.Equal(t, []string{"Galletas & Crema"}, options.Axis)
+	assert.Equal(t, []string{"Unidades <y> devoluciones"}, options.seriesNames())
+
+	markup := requireTestValue[string](t, data["chart_html"])
+	assert.Contains(t, markup, `Ventas &amp; &#34;Más&#34;`)
+	assert.Contains(t, markup, `Galletas &amp; Crema`)
+	assert.Contains(t, markup, `Unidades &lt;y&gt; devoluciones`)
 }
 
 func TestEChartsProviderAppliesNoncePerRequest(t *testing.T) {
@@ -445,6 +650,71 @@ func html(data WidgetData) string {
 		return ""
 	}
 	return strings.ToLower(val)
+}
+
+// chartLaneOptions decodes the display text carried by chart_options.
+type chartLaneOptions struct {
+	Title struct {
+		Text    string `json:"text"`
+		Subtext string `json:"subtext"`
+	} `json:"title"`
+	Series []struct {
+		Name string `json:"name"`
+		Data []struct {
+			Name string `json:"name"`
+		} `json:"data"`
+	} `json:"series"`
+	// Axis holds xAxis[0].data, read by key because ECharts option names are
+	// not snake_case.
+	Axis []string `json:"-"`
+}
+
+func decodeChartLaneOptions(t *testing.T, data WidgetData) chartLaneOptions {
+	t.Helper()
+	options, ok := data["chart_options"].(map[string]any)
+	require.Truef(t, ok, "chart_options should be structured, got %T", data["chart_options"])
+	raw, err := json.Marshal(options)
+	require.NoError(t, err)
+	var decoded chartLaneOptions
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+
+	var axes []struct {
+		Data []string `json:"data"`
+	}
+	if xAxis, found := options["xAxis"]; found {
+		rawAxes, marshalErr := json.Marshal(xAxis)
+		require.NoError(t, marshalErr)
+		require.NoError(t, json.Unmarshal(rawAxes, &axes))
+	}
+	if len(axes) > 0 {
+		decoded.Axis = axes[0].Data
+	}
+	return decoded
+}
+
+func (options chartLaneOptions) seriesNames() []string {
+	names := make([]string, len(options.Series))
+	for i, series := range options.Series {
+		names[i] = series.Name
+	}
+	return names
+}
+
+func (options chartLaneOptions) itemNames(series int) []string {
+	if series >= len(options.Series) {
+		return nil
+	}
+	names := make([]string, len(options.Series[series].Data))
+	for i, item := range options.Series[series].Data {
+		names[i] = item.Name
+	}
+	return names
+}
+
+type mapTranslationService map[string]string
+
+func (translations mapTranslationService) Translate(_ context.Context, key, _ string, _ map[string]any) (string, error) {
+	return translations[key], nil
 }
 
 func jsAssets(data WidgetData) []string {

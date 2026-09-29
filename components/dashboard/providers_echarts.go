@@ -1,11 +1,11 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -139,12 +139,10 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		cfg = map[string]any{}
 	}
 
-	title := stringValue(cfg["title"], "Chart")
-	subtitle := stringValue(cfg["subtitle"], "")
-	title = sanitizeText(title)
-	subtitle = sanitizeText(subtitle)
-	displayTitle := title
-	displaySubtitle := subtitle
+	title := strings.TrimSpace(stringValue(cfg["title"], "Chart"))
+	subtitle := strings.TrimSpace(stringValue(cfg["subtitle"], ""))
+	displayTitle := sanitizeText(title)
+	displaySubtitle := sanitizeText(subtitle)
 
 	if meta.Translator != nil {
 		key := fmt.Sprintf("dashboard.widget.%s.title", meta.Instance.DefinitionID)
@@ -152,8 +150,6 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 			title = translated
 		}
 	}
-	title = sanitizeText(title)
-	subtitle = sanitizeText(subtitle)
 
 	series := parseChartSeries(cfg["series"])
 	if len(series) == 0 {
@@ -167,8 +163,6 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 
 	xAxis = p.translateAxis(ctx, meta, xAxis)
 	p.translateSeries(ctx, meta, series)
-	xAxis = sanitizeLabels(xAxis)
-	sanitizeSeries(series)
 
 	renderCtx := chartRenderContext{
 		Viewer:  meta.Viewer,
@@ -190,7 +184,8 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 		chartSubtitle = ""
 	}
 
-	payload, err := p.renderPayload(meta, cfg, chartTitle, chartSubtitle, xAxis, series, renderCtx)
+	text := newChartText(chartTitle, chartSubtitle, xAxis, series)
+	payload, err := p.renderPayload(meta, cfg, text, renderCtx)
 	if err != nil {
 		return echartsWidgetView{}, err
 	}
@@ -200,14 +195,11 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 func (p *EChartsProvider) renderPayload(
 	meta WidgetContext,
 	cfg map[string]any,
-	title string,
-	subtitle string,
-	xAxis []string,
-	series []ChartSeries,
+	text chartText,
 	renderCtx chartRenderContext,
 ) (chartRenderPayload, error) {
 	renderFn := func() (string, error) {
-		payload, err := p.render(title, subtitle, xAxis, series, renderCtx)
+		payload, err := p.render(text, renderCtx)
 		if err != nil {
 			return "", err
 		}
@@ -310,49 +302,66 @@ func newEChartsRuntime(code, chartType string) widgetSpecRuntime {
 	}
 }
 
-func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series []ChartSeries, ctx chartRenderContext) (chartRenderPayload, error) {
-	options := p.globalChartOptions(title, subtitle, ctx)
+// render builds the chart once per output lane. go-echarts embeds the option
+// JSON verbatim inside an inline <script>, so the markup lane gets HTML-escaped
+// text. The structured lane is passed to setOption() and drawn on canvas, so it
+// keeps raw text; embedding it in HTML is the consumer's job, and an HTML-safe
+// JSON encoder such as encoding/json covers it.
+func (p *EChartsProvider) render(text chartText, ctx chartRenderContext) (chartRenderPayload, error) {
+	markup, err := p.buildChart(text.escaped(), ctx)
+	if err != nil {
+		return chartRenderPayload{}, err
+	}
+	structured, err := p.buildChart(text, ctx)
+	if err != nil {
+		return chartRenderPayload{}, err
+	}
+	return renderChart(markup, structured)
+}
+
+func (p *EChartsProvider) buildChart(text chartText, ctx chartRenderContext) (renderableChart, error) {
+	options := p.globalChartOptions(text.title, text.subtitle, ctx)
 	switch p.chartType {
 	case "bar":
 		bar := charts.NewBar()
 		bar.SetGlobalOptions(options...)
 		applySemanticChartVisitor(bar, ctx.Palette)
-		bar.SetXAxis(xAxis)
-		for index, s := range series {
+		bar.SetXAxis(text.xAxis)
+		for index, s := range text.series {
 			bar.AddSeries(s.Name, toBarData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
-		return renderChart(bar)
+		return bar, nil
 	case "line":
 		line := charts.NewLine()
 		line.SetGlobalOptions(options...)
 		applySemanticChartVisitor(line, ctx.Palette)
-		line.SetXAxis(xAxis)
-		for index, s := range series {
+		line.SetXAxis(text.xAxis)
+		for index, s := range text.series {
 			line.AddSeries(s.Name, toLineData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
 		line.SetSeriesOptions(charts.WithLineChartOpts(opts.LineChart{Smooth: opts.Bool(true)}))
-		return renderChart(line)
+		return line, nil
 	case "pie":
 		pie := charts.NewPie()
 		pie.SetGlobalOptions(options...)
 		applySemanticChartVisitor(pie, ctx.Palette)
-		for _, s := range series {
+		for _, s := range text.series {
 			pie.AddSeries(s.Name, toPieData(s.Points, ctx.Palette))
 		}
-		return renderChart(pie)
+		return pie, nil
 	case "scatter":
 		scatter := charts.NewScatter()
 		scatter.SetGlobalOptions(options...)
 		applySemanticChartVisitor(scatter, ctx.Palette)
-		for index, s := range series {
+		for index, s := range text.series {
 			scatter.AddSeries(s.Name, toScatterData(s.Points), semanticSeriesOptions(ctx.Palette, index)...)
 		}
-		return renderChart(scatter)
+		return scatter, nil
 	case "gauge":
 		gauge := charts.NewGauge()
 		gauge.SetGlobalOptions(options...)
 		applySemanticChartVisitor(gauge, ctx.Palette)
-		for index, s := range series {
+		for index, s := range text.series {
 			if len(s.Points) == 0 {
 				continue
 			}
@@ -360,35 +369,34 @@ func (p *EChartsProvider) render(title, subtitle string, xAxis []string, series 
 				{Name: s.Name, Value: s.Points[0].Value},
 			}, semanticSeriesOptions(ctx.Palette, index)...)
 		}
-		return renderChart(gauge)
+		return gauge, nil
 	default:
-		return chartRenderPayload{}, fmt.Errorf("unsupported chart type: %s", p.chartType)
+		return nil, fmt.Errorf("unsupported chart type: %s", p.chartType)
 	}
 }
 
-type snippetRenderable interface {
-	Render(io.Writer) error
+// renderableChart is the go-echarts chart API both output lanes use.
+type renderableChart interface {
 	RenderSnippet() render.ChartSnippet
 	GetAssets() opts.Assets
+	Validate()
+	JSON() map[string]any
 }
 
-func renderChart(renderable snippetRenderable) (chartRenderPayload, error) {
-	if renderable == nil {
+// echartsFuncMarker wraps JavaScript functions created with opts.FuncOpts.
+const echartsFuncMarker = "__f__"
+
+// renderChart takes the HTML snippet and assets from the markup chart and the
+// structured options from the chart built with raw text.
+func renderChart(markup, structured renderableChart) (chartRenderPayload, error) {
+	if markup == nil || structured == nil {
 		return chartRenderPayload{}, fmt.Errorf("chart renderable is nil")
 	}
-	snippet := renderable.RenderSnippet()
-	markup := addResponsiveBehavior(snippet.Element + snippet.Script)
-	options := map[string]any{}
-	if err := json.Unmarshal([]byte(snippet.Option), &options); err != nil {
-		// Some advanced go-echarts configurations contain executable
-		// JavaScript functions and cannot be represented as safe JSON.
-		// Preserve the trusted HTML lane while omitting structured options.
-		options = nil
-	}
-	assets := renderable.GetAssets()
+	snippet := markup.RenderSnippet()
+	assets := markup.GetAssets()
 	return chartRenderPayload{
-		Markup:  markup,
-		Options: options,
+		Markup:  addResponsiveBehavior(snippet.Element + snippet.Script),
+		Options: structuredChartOptions(structured),
 		JS: appendUniqueStrings(
 			append([]string{}, assets.JSAssets.Values...),
 			assets.CustomizedJSAssets.Values...,
@@ -398,6 +406,25 @@ func renderChart(renderable snippetRenderable) (chartRenderPayload, error) {
 			assets.CustomizedCSSAssets.Values...,
 		),
 	}, nil
+}
+
+// structuredChartOptions returns the chart's ECharts option object as JSON
+// values. Validate is the go-echarts render hook that moves axis data into the
+// option tree; reading JSON directly skips rendering the snippet templates.
+func structuredChartOptions(chart renderableChart) map[string]any {
+	chart.Validate()
+	raw, err := json.Marshal(chart.JSON())
+	if err != nil || bytes.Contains(raw, []byte(echartsFuncMarker)) {
+		// Executable JavaScript functions cannot be represented as safe
+		// JSON. Preserve the trusted HTML lane while omitting structured
+		// options.
+		return nil
+	}
+	var options map[string]any
+	if json.Unmarshal(raw, &options) != nil {
+		return nil
+	}
+	return options
 }
 
 func cloneChartOptions(options map[string]any) map[string]any {
@@ -872,14 +899,14 @@ func stringSliceValue(v any) []string {
 	case []string:
 		out := make([]string, len(val))
 		for i, item := range val {
-			out[i] = sanitizeText(item)
+			out[i] = strings.TrimSpace(item)
 		}
 		return out
 	case []any:
 		out := make([]string, 0, len(val))
 		for _, item := range val {
 			if s, ok := item.(string); ok {
-				out = append(out, sanitizeText(s))
+				out = append(out, strings.TrimSpace(s))
 			}
 		}
 		return out
@@ -940,24 +967,57 @@ func sanitizeText(value string) string {
 	return template.HTMLEscapeString(value)
 }
 
-func sanitizeLabels(labels []string) []string {
+// chartText is the display text a chart draws: title, subtitle, category axis
+// labels, series names, and data item names. It holds raw, trimmed text; see
+// render for how each output lane encodes it.
+type chartText struct {
+	title    string
+	subtitle string
+	xAxis    []string
+	series   []ChartSeries
+}
+
+func newChartText(title, subtitle string, xAxis []string, series []ChartSeries) chartText {
+	return chartText{
+		title:    strings.TrimSpace(title),
+		subtitle: strings.TrimSpace(subtitle),
+		xAxis:    mapLabels(xAxis, strings.TrimSpace),
+		series:   mapSeriesText(series, strings.TrimSpace),
+	}
+}
+
+// escaped returns a copy with every display string HTML-escaped once.
+func (text chartText) escaped() chartText {
+	return chartText{
+		title:    sanitizeText(text.title),
+		subtitle: sanitizeText(text.subtitle),
+		xAxis:    mapLabels(text.xAxis, sanitizeText),
+		series:   mapSeriesText(text.series, sanitizeText),
+	}
+}
+
+func mapLabels(labels []string, format func(string) string) []string {
 	if len(labels) == 0 {
 		return labels
 	}
 	out := make([]string, len(labels))
 	for i, label := range labels {
-		out[i] = sanitizeText(label)
+		out[i] = format(label)
 	}
 	return out
 }
 
-func sanitizeSeries(series []ChartSeries) {
-	for i := range series {
-		series[i].Name = sanitizeText(series[i].Name)
-		for j := range series[i].Points {
-			series[i].Points[j].Label = sanitizeText(series[i].Points[j].Label)
+func mapSeriesText(series []ChartSeries, format func(string) string) []ChartSeries {
+	out := make([]ChartSeries, len(series))
+	for i, s := range series {
+		points := make([]ChartPoint, len(s.Points))
+		for j, point := range s.Points {
+			point.Label = format(point.Label)
+			points[j] = point
 		}
+		out[i] = ChartSeries{Name: format(s.Name), Points: points}
 	}
+	return out
 }
 
 func (p *EChartsProvider) translateAxis(ctx context.Context, meta WidgetContext, labels []string) []string {
