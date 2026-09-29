@@ -10,9 +10,9 @@ func cloneAnyValue(value any) any {
 	case nil:
 		return nil
 	case WidgetData:
-		return cloneAnyMap(map[string]any(typed))
+		return cloneNestedAnyMap(map[string]any(typed))
 	case map[string]any:
-		return cloneAnyMap(typed)
+		return cloneNestedAnyMap(typed)
 	case []any:
 		out := make([]any, len(typed))
 		for i, item := range typed {
@@ -22,7 +22,7 @@ func cloneAnyValue(value any) any {
 	case []map[string]any:
 		out := make([]map[string]any, len(typed))
 		for i, item := range typed {
-			out[i] = cloneAnyMap(item)
+			out[i] = cloneNestedAnyMap(item)
 		}
 		return out
 	case []string:
@@ -36,6 +36,20 @@ func cloneAnyValue(value any) any {
 	default:
 		return value
 	}
+}
+
+// cloneNestedAnyMap deep-clones payload content and keeps an empty map empty:
+// JSON consumers such as ECharts treat `yAxis: [{}]` (a default axis) and
+// `yAxis: [null]` (a missing axis model) differently.
+func cloneNestedAnyMap(in map[string]any) map[string]any {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]any, len(in))
+	for key, value := range in {
+		out[key] = cloneAnyValue(value)
+	}
+	return out
 }
 
 func cloneWidgetAreaDefinition(area WidgetAreaDefinition) WidgetAreaDefinition {

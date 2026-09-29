@@ -76,6 +76,10 @@ expects a single dataset.
   `encoding/json` escapes `<`, `>` and `&`); never interpolate
   `JSON.stringify` output into markup. Avoid concatenating raw config strings
   directly into templates.
+- The `title` and `subtitle` widget fields carry the same raw display text.
+  Escape them when rendering: the bundled `widgets/echarts_chart.html` relies
+  on template autoescaping, so never mark them `|safe`, and HTML-escape them
+  before writing markup client-side.
 - Providers run with the standard `ViewerContext`. Continue to enforce
   viewer/role-based access in custom providers before fetching sensitive data.
 
@@ -103,9 +107,11 @@ deployment recommendations.
 
 ## Theming & Localization
 
-- Titles/subtitles call `TranslationService` using the key pattern
-  `dashboard.widget.<definition>.title`. Provide translations through your
-  existing translation backend for localized dashboards.
+- Titles call `TranslationService` using the key pattern
+  `dashboard.widget.<definition>.title` and fall back to the configured
+  `title`. The widget `title` field and the in-chart title use the same
+  translated text; subtitles are not translated. Provide translations through
+  your existing translation backend for localized dashboards.
 - Customize themes per-viewer by supplying `dashboard.WithChartThemeResolver`
   when constructing `EChartsProvider`, or per-widget via the `theme` config
   field. CSS overrides remain available via `.widget--echarts` classes.
@@ -148,7 +154,9 @@ Chart.js fallback or dual-rendering layer to maintain.
 | `show_chart_title` | boolean | Same as above; defaults to `false` so the widget header owns the title. |
 
 `SalesChartProvider` derives the title/subtitle from the selected metric, period,
-and segment, so you generally do not supply chart `series` manually.
+and segment, so you generally do not supply chart `series` manually. A
+translation for `dashboard.widget.admin.widget.sales_chart.title` replaces the
+derived title.
 
 ---
 

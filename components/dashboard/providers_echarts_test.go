@@ -342,9 +342,8 @@ func TestEChartsProviderSanitizesStrings(t *testing.T) {
 	data, err := provider.Fetch(context.Background(), ctx)
 	require.NoError(t, err)
 
-	title := requireTestValue[string](t, data["title"])
-	assert.NotContains(t, title, "<script>")
-	assert.Contains(t, title, "&lt;script&gt;")
+	// The title view field carries raw text; renderers escape it (ADR-0002).
+	assert.Equal(t, `<script>alert("xss")</script>`, data["title"])
 
 	markup := html(data)
 	assert.NotContains(t, markup, "<b onclick")
@@ -461,6 +460,8 @@ func TestEChartsProviderStructuredOptionsCarryRawText(t *testing.T) {
 			options := decodeChartLaneOptions(t, data)
 			assert.Equal(t, title, options.Title.Text)
 			assert.Equal(t, subtitle, options.Title.Subtext)
+			assert.Equal(t, title, data["title"], "title view field carries the raw text the chart draws")
+			assert.Equal(t, subtitle, data["subtitle"], "subtitle view field carries the raw text the chart draws")
 			if tc.axis != nil {
 				assert.Equal(t, tc.axis, options.Axis)
 			}
@@ -547,6 +548,7 @@ func TestEChartsProviderTranslatesRawText(t *testing.T) {
 
 	options := decodeChartLaneOptions(t, data)
 	assert.Equal(t, `Ventas & "Más"`, options.Title.Text)
+	assert.Equal(t, `Ventas & "Más"`, data["title"])
 	assert.Equal(t, []string{"Galletas & Crema"}, options.Axis)
 	assert.Equal(t, []string{"Unidades <y> devoluciones"}, options.seriesNames())
 
@@ -554,6 +556,44 @@ func TestEChartsProviderTranslatesRawText(t *testing.T) {
 	assert.Contains(t, markup, `Ventas &amp; &#34;Más&#34;`)
 	assert.Contains(t, markup, `Galletas &amp; Crema`)
 	assert.Contains(t, markup, `Unidades &lt;y&gt; devoluciones`)
+}
+
+func TestEChartsProviderTitleViewFieldUsesTranslation(t *testing.T) {
+	t.Parallel()
+	const key = "dashboard.widget.admin.widget.bar_chart.title"
+	cases := []struct {
+		name         string
+		title        string
+		translations mapTranslationService
+		want         string
+	}{
+		{name: "translated", title: "Sales", translations: mapTranslationService{key: ` Ventas & "Más" `}, want: `Ventas & "Más"`},
+		{name: "missing translation", title: "Sales", translations: mapTranslationService{}, want: "Sales"},
+		{name: "blank translation", title: "Sales", translations: mapTranslationService{key: "  "}, want: "Sales"},
+		{name: "blank title without translation", title: "  ", translations: mapTranslationService{}, want: ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			provider := NewEChartsProvider("bar", WithChartCache(nil))
+			ctx := sampleChartContext("admin.widget.bar_chart", map[string]any{
+				"title":    tc.title,
+				"subtitle": " It's Q3 & Q4 ",
+				"series":   []map[string]any{{"name": "Units", "data": []float64{1}}},
+			})
+			ctx.Translator = tc.translations
+
+			data, err := provider.Fetch(context.Background(), ctx)
+			require.NoError(t, err)
+
+			// The chart hides its own title by default, so the header shows
+			// the only title and must carry the translation.
+			assert.Empty(t, decodeChartLaneOptions(t, data).Title.Text)
+			assert.Equal(t, tc.want, data["title"])
+			assert.Equal(t, "It's Q3 & Q4", data["subtitle"])
+		})
+	}
 }
 
 func TestEChartsProviderAppliesNoncePerRequest(t *testing.T) {

@@ -141,12 +141,12 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 
 	title := strings.TrimSpace(stringValue(cfg["title"], "Chart"))
 	subtitle := strings.TrimSpace(stringValue(cfg["subtitle"], ""))
-	displayTitle := sanitizeText(title)
-	displaySubtitle := sanitizeText(subtitle)
 
 	if meta.Translator != nil {
 		key := fmt.Sprintf("dashboard.widget.%s.title", meta.Instance.DefinitionID)
-		if translated := translateOrFallback(ctx, meta.Translator, key, meta.Viewer.Locale, title, nil); translated != "" {
+		// translateOrFallback returns the key itself when there is neither a
+		// translation nor a configured title.
+		if translated := strings.TrimSpace(translateOrFallback(ctx, meta.Translator, key, meta.Viewer.Locale, title, nil)); translated != "" && translated != key {
 			title = translated
 		}
 	}
@@ -189,7 +189,9 @@ func (p *EChartsProvider) BuildView(ctx context.Context, meta WidgetContext) (ec
 	if err != nil {
 		return echartsWidgetView{}, err
 	}
-	return p.buildView(meta, cfg, displayTitle, displaySubtitle, renderCtx, payload), nil
+	// The view fields carry the raw text the chart draws; renderers escape
+	// them (ADR-0002).
+	return p.buildView(meta, cfg, title, subtitle, renderCtx, payload), nil
 }
 
 func (p *EChartsProvider) renderPayload(

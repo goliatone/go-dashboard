@@ -293,13 +293,11 @@ func cloneLocalizedFields(in map[string]string) map[string]string {
 	return out
 }
 
+// cloneAnyMap deep-clones a root map and returns nil when it is nil or empty.
+// Nested values keep their nil-vs-empty shape; see cloneNestedAnyMap.
 func cloneAnyMap(in map[string]any) map[string]any {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make(map[string]any, len(in))
-	for key, value := range in {
-		out[key] = cloneAnyValue(value)
-	}
-	return out
+	return cloneNestedAnyMap(in)
 }

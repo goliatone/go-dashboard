@@ -625,6 +625,54 @@ func TestControllerPageAggregatesAndDeduplicatesWidgetAssets(t *testing.T) {
 	}
 }
 
+func TestControllerPagePreservesEmptyObjectsInPromotedChartPayloads(t *testing.T) {
+	controller := NewController(ControllerOptions{
+		Service: &stubLayoutResolver{layout: Layout{
+			Areas: map[string][]WidgetInstance{
+				"admin.dashboard.main": {
+					{
+						ID:           "chart-1",
+						DefinitionID: "admin.widget.bar_chart",
+						Metadata: map[string]any{
+							widgetViewModelMetadataKey: map[string]any{
+								"js_assets": []any{"/assets/echarts.min.js"},
+								"chart_options": map[string]any{
+									"xAxis":   []any{map[string]any{"data": []any{"Mon", "Tue"}}},
+									"yAxis":   []any{map[string]any{}},
+									"tooltip": map[string]any{},
+								},
+							},
+						},
+					},
+				},
+			},
+		}},
+	})
+
+	page, err := controller.Page(context.Background(), ViewerContext{})
+	if err != nil {
+		t.Fatalf("Page returned error: %v", err)
+	}
+	main, ok := page.Area("main")
+	if !ok || len(main.Widgets) != 1 {
+		t.Fatalf("expected one main widget, got %+v", page.Areas)
+	}
+	data, valid := main.Widgets[0].Data.(map[string]any)
+	if !valid {
+		t.Fatalf("expected chart widget data map, got %T", main.Widgets[0].Data)
+	}
+	raw, err := json.Marshal(data["chart_options"])
+	if err != nil {
+		t.Fatalf("marshal chart options: %v", err)
+	}
+	// ECharts rejects a null axis entry; an empty object is a valid default axis.
+	for _, fragment := range []string{`"yAxis":[{}]`, `"tooltip":{}`} {
+		if !strings.Contains(string(raw), fragment) {
+			t.Fatalf("expected chart options to keep %s after asset promotion, got %s", fragment, raw)
+		}
+	}
+}
+
 func TestControllerHTMLAndJSONDeriveFromSameTypedPageSource(t *testing.T) {
 	service := &stubLayoutResolver{
 		layout: Layout{
