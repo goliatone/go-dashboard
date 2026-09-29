@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.15.6](https://github.com/goliatone/go-dashboard/compare/v0.15.5...v0.15.6) - (2026-09-29)
+
+## <!-- 1 -->🐛 Bug Fixes
+
+- Raw title/subtitle and translation ([b3144f0](https://github.com/goliatone/go-dashboard/commit/b3144f02a80d9e16257103f33aec988bdded5a35))  - (goliatone)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.6 ([dcd4ff3](https://github.com/goliatone/go-dashboard/commit/dcd4ff3f2e7bae014466ee63dc3b0b0ab3fbff86))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.5 ([19ea611](https://github.com/goliatone/go-dashboard/commit/19ea611c11b595afb1bcae9829a350f3c022ba37))  - (goliatone)
+
 # [0.15.5](https://github.com/goliatone/go-dashboard/compare/v0.15.4...v0.15.5) - (2026-09-29)
 
 ## <!-- 1 -->🐛 Bug Fixes
