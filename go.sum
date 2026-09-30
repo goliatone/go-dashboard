@@ -63,12 +63,12 @@ github.com/goliatone/go-router v0.61.3 h1:9OnBVkg2BN1gf24yDEK3BU9S67RZjL+8P2zPGX
 github.com/goliatone/go-router v0.61.3/go.mod h1:bcAifjTvKciFA6M6RtHcMAJ+mfuT//yxs/aLE3NHwDk=
 github.com/goliatone/go-template v0.3.1 h1:x714biuWqtCyrtTmIrt2YjXWPYBOIS/Y2DPdWXtrAr8=
 github.com/goliatone/go-template v0.3.1/go.mod h1:2mFRGMnfvAn3r4ClMmlu4wBVkSKXgtXhVdmmmhhgSr4=
-github.com/goliatone/go-users v0.24.1 h1:iTSHo5A5kMexVZJNC6UVlmUf4lsCL8A802dheg3eGRg=
-github.com/goliatone/go-users v0.24.1/go.mod h1:Yhcfa0QZ1PYBm4HPDUsUZXbAwGsxV4itbsNClQwCL6o=
+github.com/goliatone/go-users v0.26.1 h1:ZT3p/pWvWfEwW4pnVlN51DzZQE2Eg3wY8cTAnAyOKZI=
+github.com/goliatone/go-users v0.26.1/go.mod h1:nhL8MayJkiHtvEBhXRWlkJo8Tp1UPzOBAzsxxyM/QkM=
 github.com/goodsign/monday v1.0.2 h1:k8kRMkCRVfCTWOU4dRfRgneQsWlB1+mJd3MxG0lGLzQ=
 github.com/goodsign/monday v1.0.2/go.mod h1:r4T4breXpoFwspQNM+u2sLxJb2zyTaxVGqUfTBjWOu8=
-github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
-github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=
+github.com/google/go-cmp v0.7.0/go.mod h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=

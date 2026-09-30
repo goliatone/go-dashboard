@@ -10,7 +10,7 @@ require (
 	github.com/goliatone/go-command v0.24.2
 	github.com/goliatone/go-router v0.61.3
 	github.com/goliatone/go-template v0.3.1
-	github.com/goliatone/go-users v0.24.1
+	github.com/goliatone/go-users v0.26.1
 	github.com/google/uuid v1.6.0
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
@@ -37,6 +37,7 @@ require (
 	github.com/goliatone/go-i18n v0.5.0 // indirect
 	github.com/goliatone/go-masker v0.2.0 // indirect
 	github.com/goodsign/monday v1.0.2 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 	github.com/klauspost/compress v1.18.7 // indirect
