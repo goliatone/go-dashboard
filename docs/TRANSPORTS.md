@@ -48,6 +48,9 @@ the transport strategy that best fits their stack.
   events to in-process subscribers.
 - The go-router adapter subscribes to this hook and streams events over
   WebSockets, keeping all protocol-specific code in one place.
+- WebSocket adapters must implement `router.WebSocketReadInterrupter`, as the
+  shipped Fiber and HTTPRouter adapters do. The handler reads control frames
+  and peer closure, then interrupts and joins its reader before returning.
 - For alternative transports (notifications, SSE, etc.), subscribe to the hook
   and forward the events with your own adapters.
 

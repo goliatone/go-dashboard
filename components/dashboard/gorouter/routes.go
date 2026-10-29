@@ -200,20 +200,44 @@ func registerWebSocket[T any](r router.Router[T], hook *dashboard.BroadcastHook,
 	r.WebSocket(path, cfg, func(ws router.WebSocketContext) error {
 		events, cancel := hook.Subscribe()
 		defer cancel()
+		return streamWidgetEvents(ws, events)
+	})
+}
+
+func streamWidgetEvents(ws router.WebSocketContext, events <-chan dashboard.WidgetEvent) error {
+	interrupter, ok := ws.(router.WebSocketReadInterrupter)
+	if !ok {
+		return errors.New("dashboard websocket requires concurrency-safe read interruption")
+	}
+	readDone := make(chan struct{})
+	go func() {
+		defer close(readDone)
 		for {
-			select {
-			case event, ok := <-events:
-				if !ok {
-					return nil
-				}
-				if err := ws.WriteJSON(event); err != nil {
-					return err
-				}
-			case <-ws.Context().Done():
-				return ws.Close()
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
 			}
 		}
-	})
+	}()
+	defer func() {
+		_ = interrupter.InterruptRead()
+		<-readDone
+	}()
+
+	for {
+		select {
+		case <-readDone:
+			return nil
+		case <-ws.Context().Done():
+			return nil
+		case event, ok := <-events:
+			if !ok {
+				return nil
+			}
+			if err := ws.WriteJSON(event); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func defaultViewerResolver(ctx router.Context) dashboard.ViewerContext {
