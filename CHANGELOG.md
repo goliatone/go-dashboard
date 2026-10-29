@@ -1,5 +1,19 @@
 # Changelog
 
+# [0.15.9](https://github.com/goliatone/go-dashboard/compare/v0.15.8...v0.15.9) - (2026-10-29)
+
+## <!-- 13 -->📦 Bumps
+
+- Bump version: v0.15.9 ([4b04e2c](https://github.com/goliatone/go-dashboard/commit/4b04e2c86b277aa6ec77fd1531a0aba8db6416a8))  - (goliatone)
+
+## <!-- 16 -->➕ Add
+
+- Stream events ([4d00ff0](https://github.com/goliatone/go-dashboard/commit/4d00ff000ac3d62fd6ce67c61978ec6728b3517f))  - (goliatone)
+
+## <!-- 3 -->📚 Documentation
+
+- Update changelog for v0.15.8 ([8a607ee](https://github.com/goliatone/go-dashboard/commit/8a607eea55a9c5fed5938eef474868a7d450622f))  - (goliatone)
+
 # [0.15.8](https://github.com/goliatone/go-dashboard/compare/v0.15.7...v0.15.8) - (2026-09-30)
 
 ## <!-- 13 -->📦 Bumps
